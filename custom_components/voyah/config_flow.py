@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -38,6 +38,50 @@ class VoyahConfigFlow(ConfigFlow, domain=DOMAIN):
         self._refresh_token: str = ""
         self._organizations: list[dict[str, Any]] = []
         self._cars: list[dict[str, Any]] = []
+        self._reauth_entry: ConfigEntry | None = None
+
+    async def async_step_reauth(
+        self,
+        entry_data: dict[str, Any],
+    ) -> FlowResult:
+        """Start reauthentication flow when tokens expire."""
+        self._reauth_entry = self._get_reauth_entry()
+        self._phone = entry_data.get(CONF_PHONE, "")
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Step: confirm phone and request new SMS."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            phone = user_input[CONF_PHONE].lstrip("+").replace(" ", "").replace("-", "")
+            self._phone = phone
+            errors = await self._async_request_sms(phone)
+            if not errors:
+                return await self.async_step_code()
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_PHONE, default=self._phone): str}
+            ),
+            errors=errors,
+        )
+
+    async def _async_request_sms(self, phone: str) -> dict[str, str]:
+        """Request an SMS code and return any errors."""
+        session = async_get_clientsession(self.hass)
+        try:
+            await VoyahApiClient.async_request_sms(session, phone)
+        except VoyahApiConnectionError:
+            return {"base": "cannot_connect"}
+        except Exception:
+            _LOGGER.exception("Unexpected exception requesting SMS")
+            return {"base": "unknown"}
+        return {}
 
     async def async_step_user(
         self,
@@ -49,16 +93,7 @@ class VoyahConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             phone = user_input[CONF_PHONE].lstrip("+").replace(" ", "").replace("-", "")
             self._phone = phone
-
-            session = async_get_clientsession(self.hass)
-            try:
-                await VoyahApiClient.async_request_sms(session, phone)
-            except VoyahApiConnectionError:
-                errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected exception requesting SMS")
-                errors["base"] = "unknown"
-
+            errors = await self._async_request_sms(phone)
             if not errors:
                 return await self.async_step_code()
 
@@ -204,9 +239,22 @@ class VoyahConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_create_entry(self, car: dict[str, Any]) -> FlowResult:
-        """Create the config entry for a selected car."""
+        """Create or update the config entry for a selected car."""
         car_id = car.get("_id", car.get("id"))
         car_name = _car_label(car)
+
+        if self._reauth_entry is not None:
+            await self.async_set_unique_id(f"{DOMAIN}_{car_id}")
+            self._abort_if_unique_id_mismatch()
+            return self.async_update_reload_and_abort(
+                self._reauth_entry,
+                data_updates={
+                    CONF_PHONE: self._phone,
+                    CONF_ACCESS_TOKEN: self._access_token,
+                    CONF_REFRESH_TOKEN: self._refresh_token,
+                },
+                reason="reauth_successful",
+            )
 
         await self.async_set_unique_id(f"{DOMAIN}_{car_id}")
         self._abort_if_unique_id_configured()

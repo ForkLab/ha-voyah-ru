@@ -31,6 +31,16 @@
                 "data": {
                     "car": "Car"
                 }
+            },
+            "reauth_confirm": {
+                "title": "Voyah — Re-authentication",
+                "description": "Your session has expired. Enter your phone number to receive a new SMS code.",
+                "data": {
+                    "phone": "Phone number"
+                },
+                "data_description": {
+                    "phone": "Format: 79001234567 (11 digits)"
+                }
             }
         },
         "error": {
@@ -41,7 +51,9 @@
         },
         "abort": {
             "already_configured": "This car is already configured",
-            "no_cars": "No cars found for this account"
+            "no_cars": "No cars found for this account",
+            "reauth_successful": "Re-authentication successful",
+            "unique_id_mismatch": "The selected car does not match the configured one. Re-authentication is only possible for the same car."
         }
     },
     "entity": {
