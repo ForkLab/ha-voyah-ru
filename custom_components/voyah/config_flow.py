@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import voluptuous as vol
 
 from .api import VoyahApiAuthError, VoyahApiClient, VoyahApiConnectionError, VoyahApiError
 from .const import (
@@ -65,9 +64,7 @@ class VoyahConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_PHONE, default=self._phone): str}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_PHONE, default=self._phone): str}),
             errors=errors,
         )
 
