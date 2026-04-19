@@ -152,6 +152,7 @@ class VoyahApiClient:
             "sensors_data": sensors_data,
             "position_data": position_data,
             "time": timestamp,
+            "last_ping": raw.get("lastPing"),
         }
 
     # ── Auth helpers (used by config_flow, not during polling) ──

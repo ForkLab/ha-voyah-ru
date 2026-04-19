@@ -1,0 +1,110 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Voyah — Номер телефона",
+                "description": "Введите номер телефона для получения SMS-кода.",
+                "data": {
+                    "phone": "Номер телефона"
+                },
+                "data_description": {
+                    "phone": "Формат: 79001234567 (11 цифр)"
+                }
+            },
+            "code": {
+                "title": "Voyah — SMS-код",
+                "description": "На номер {phone} отправлен SMS-код.",
+                "data": {
+                    "code": "SMS-код"
+                }
+            },
+            "organization": {
+                "title": "Voyah — Организация",
+                "description": "Выберите организацию.",
+                "data": {
+                    "organization": "Организация"
+                }
+            },
+            "car": {
+                "title": "Voyah — Выбор автомобиля",
+                "description": "Выберите автомобиль для мониторинга.",
+                "data": {
+                    "car": "Автомобиль"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Voyah — Повторная аутентификация",
+                "description": "Сессия истекла. Введите номер телефона для получения нового SMS-кода.",
+                "data": {
+                    "phone": "Номер телефона"
+                },
+                "data_description": {
+                    "phone": "Формат: 79001234567 (11 цифр)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Не удалось подключиться к API Voyah",
+            "invalid_code": "Неверный SMS-код",
+            "invalid_auth": "Ошибка аутентификации",
+            "unknown": "Неожиданная ошибка"
+        },
+        "abort": {
+            "already_configured": "Этот автомобиль уже настроен",
+            "no_cars": "Для этого аккаунта не найдено автомобилей",
+            "reauth_successful": "Повторная аутентификация выполнена успешно",
+            "unique_id_mismatch": "Выбранный автомобиль не совпадает с настроенным. Повторная аутентификация возможна только для того же автомобиля."
+        }
+    },
+    "entity": {
+        "sensor": {
+            "battery_percentage": { "name": "Батарея" },
+            "remains_mileage": { "name": "Запас хода (электро)" },
+            "fuel_percentage": { "name": "Уровень топлива" },
+            "remains_mileage_fuel": { "name": "Запас хода (топливо)" },
+            "battery_voltage_12v": { "name": "Напряжение 12V батареи" },
+            "odometer": { "name": "Одометр" },
+            "outside_temperature": { "name": "Температура снаружи" },
+            "inboard_temperature": { "name": "Температура в салоне" },
+            "battery_temperature": { "name": "Температура батареи" },
+            "coolant_temperature": { "name": "Температура охлаждающей жидкости" },
+            "climate_target_temperature": { "name": "Целевая температура климата" },
+            "climate_fan_speed": { "name": "Скорость вентилятора климата" },
+            "tire_pressure_front_left": { "name": "Давление шины спереди слева" },
+            "tire_pressure_front_right": { "name": "Давление шины спереди справа" },
+            "tire_pressure_rear_left": { "name": "Давление шины сзади слева" },
+            "tire_pressure_rear_right": { "name": "Давление шины сзади справа" },
+            "speed": { "name": "Скорость" },
+            "charging_end_time": { "name": "Расчётное время окончания зарядки" },
+            "last_ping": { "name": "Последний пинг" }
+        },
+        "device_tracker": {
+            "location": { "name": "Местоположение" }
+        },
+        "button": {
+            "start_heating": { "name": "Запуск обогрева" }
+        },
+        "binary_sensor": {
+            "ignition": { "name": "Зажигание" },
+            "charging": { "name": "Зарядка" },
+            "central_locking": { "name": "Центральный замок" },
+            "door_front_left": { "name": "Дверь спереди слева" },
+            "door_front_right": { "name": "Дверь спереди справа" },
+            "door_rear_left": { "name": "Дверь сзади слева" },
+            "trunk": { "name": "Багажник" },
+            "hatch": { "name": "Хэтчбек" },
+            "climate": { "name": "Климат" },
+            "security": { "name": "Охрана" },
+            "headlights": { "name": "Фары" },
+            "ready": { "name": "Готовность" },
+            "airing": { "name": "Проветривание" },
+            "climate_front_window": { "name": "Обогрев лобового стекла" },
+            "mirrors_heating": { "name": "Обогрев зеркал" },
+            "wheel_heating": { "name": "Обогрев руля" },
+            "seat_heating_driver": { "name": "Обогрев сиденья водителя" },
+            "seat_heating_front_passenger": { "name": "Обогрев сиденья переднего пассажира" },
+            "seat_heating_rear_left": { "name": "Обогрев сиденья сзади слева" },
+            "seat_heating_rear_right": { "name": "Обогрев сиденья сзади справа" }
+        }
+    }
+}
