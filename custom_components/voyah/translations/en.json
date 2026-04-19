@@ -74,7 +74,8 @@
             "tire_pressure_rear_left": { "name": "Tire pressure rear left" },
             "tire_pressure_rear_right": { "name": "Tire pressure rear right" },
             "speed": { "name": "Speed" },
-            "charging_end_time": { "name": "Estimated charging end time" }
+            "charging_end_time": { "name": "Estimated charging end time" },
+            "battery_soh": { "name": "Battery SOH" }
         },
         "device_tracker": {
             "location": { "name": "Location" }

@@ -26,6 +26,7 @@
 | Давление шин (ПЛ, ПП, ЗЛ, ЗП) | бар | Давление в каждой шине |
 | Скорость | км/ч | Текущая скорость автомобиля |
 | Расчётное время окончания зарядки | timestamp | Прогнозируемое время завершения зарядки (линейная экстраполяция) |
+| Здоровье батареи (SOH) | % | Состояние здоровья высоковольтной батареи (>100% — новая батарея) |
 
 #### Расчётное время окончания зарядки — алгоритм
 
@@ -251,6 +252,7 @@ Custom integration for [Home Assistant](https://www.home-assistant.io/) that con
 | Tire pressure (FL, FR, RL, RR) | bar | Individual tire pressures |
 | Speed | km/h | Current vehicle speed |
 | Estimated charging end time | timestamp | Projected completion time (linear extrapolation from observed charge rate) |
+| Battery SOH | % | State of health of the high-voltage battery (>100% means new battery) |
 
 #### Estimated charging end time — algorithm
 
