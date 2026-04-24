@@ -26,6 +26,8 @@
 | Давление шин (ПЛ, ПП, ЗЛ, ЗП) | бар | Давление в каждой шине |
 | Скорость | км/ч | Текущая скорость автомобиля |
 | Расчётное время окончания зарядки | timestamp | Прогнозируемое время завершения зарядки (линейная экстраполяция) |
+| Температура в салоне | °C | Температура воздуха внутри салона автомобиля |
+| Время с последнего пинга | с | Время с момента последнего соединения автомобиля с сервером |
 
 #### Расчётное время окончания зарядки — алгоритм
 
@@ -251,6 +253,8 @@ Custom integration for [Home Assistant](https://www.home-assistant.io/) that con
 | Tire pressure (FL, FR, RL, RR) | bar | Individual tire pressures |
 | Speed | km/h | Current vehicle speed |
 | Estimated charging end time | timestamp | Projected completion time (linear extrapolation from observed charge rate) |
+| Interior temperature | °C | Air temperature inside the vehicle cabin |
+| Time since last ping | s | Seconds since the car last connected to the server |
 
 #### Estimated charging end time — algorithm
 
