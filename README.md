@@ -30,6 +30,10 @@
 | Температура в салоне | °C | Температура воздуха внутри салона автомобиля |
 | Время с последнего пинга | с | Время с момента последнего соединения автомобиля с сервером |
 
+#### Здоровье батареи (SOH) — примечания
+
+Значение обновляется раз в 12 часов (данные меняются медленно). Значение >100% норма для новой батареи — API возвращает калиброванное значение относительно номинальной ёмкости.
+
 #### Расчётное время окончания зарядки — алгоритм
 
 Сенсор оценивает, когда батарея достигнет 100%, используя скользящее окно последних 3% для расчёта текущей скорости зарядки.
@@ -257,6 +261,10 @@ Custom integration for [Home Assistant](https://www.home-assistant.io/) that con
 | Battery SOH | % | State of health of the high-voltage battery (>100% means new battery) |
 | Interior temperature | °C | Air temperature inside the vehicle cabin |
 | Time since last ping | s | Seconds since the car last connected to the server |
+
+#### Battery SOH — notes
+
+Updated every 12 hours (the value changes slowly). A value >100% is normal for a new battery — the API returns a calibrated value relative to the nominal capacity.
 
 #### Estimated charging end time — algorithm
 
