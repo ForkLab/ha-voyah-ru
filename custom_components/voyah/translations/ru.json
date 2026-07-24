@@ -83,7 +83,10 @@
             "location": { "name": "Местоположение" }
         },
         "button": {
-            "start_heating": { "name": "Запуск обогрева" }
+            "start_heating": { "name": "Запуск обогрева" },
+            "start_cooling": { "name": "Запуск охлаждения" },
+            "toggle_central_locking": { "name": "Переключить центральный замок" },
+            "toggle_trunk": { "name": "Переключить багажник" }
         },
         "binary_sensor": {
             "ignition": { "name": "Зажигание" },

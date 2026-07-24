@@ -46,6 +46,23 @@ async def test_parse_merges_speed_from_position() -> None:
     assert result["sensors_data"]["speed"] == 60
 
 
+async def test_parse_accepts_info_response_wrapper() -> None:
+    """_parse accepts the /info response shape with sensors wrapper."""
+    raw = {
+        "sensors": {
+            "sensorsData": {"centralLockingStatus": 1},
+            "positionData": {"speed": 0},
+            "time": 1784903300,
+            "lastPing": 12.5,
+        },
+        "isCentralLockingOn": False,
+    }
+    result = VoyahApiClient._parse(raw)
+    assert result["sensors_data"]["centralLockingStatus"] == 1
+    assert result["time"] == 1784903300
+    assert result["last_ping"] == 12.5
+
+
 async def test_get_car_data_success() -> None:
     """async_get_car_data returns parsed data on 200."""
     raw = {
@@ -133,3 +150,36 @@ async def test_get_car_info_success() -> None:
     client = _make_client(session)
     result = await client.async_get_car_info()
     assert result == {"liveSensors": {"soh": 98}}
+
+
+async def test_send_tbox_command_posts_to_command_endpoint() -> None:
+    """async_send_tbox_command posts to the selected TBox command endpoint."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(200, {"ok": True}))
+
+    client = _make_client(session)
+    result = await client.async_send_tbox_command("cooling")
+
+    assert result == {"ok": True}
+    args = session.request.call_args.args
+    assert args == ("POST", f"https://app.voyahassist.ru/car-service/tbox/{MOCK_CAR_ID}/cooling")
+
+
+async def test_command_helpers_send_expected_commands() -> None:
+    """Command helpers use the endpoint names captured from the web app."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(200, {}))
+
+    client = _make_client(session)
+    await client.async_start_heating()
+    await client.async_start_cooling()
+    await client.async_toggle_central_locking()
+    await client.async_toggle_trunk()
+
+    called_urls = [call.args[1] for call in session.request.call_args_list]
+    assert called_urls == [
+        f"https://app.voyahassist.ru/car-service/tbox/{MOCK_CAR_ID}/heating",
+        f"https://app.voyahassist.ru/car-service/tbox/{MOCK_CAR_ID}/cooling",
+        f"https://app.voyahassist.ru/car-service/tbox/{MOCK_CAR_ID}/centralLockingToggle",
+        f"https://app.voyahassist.ru/car-service/tbox/{MOCK_CAR_ID}/trunkToggle",
+    ]
