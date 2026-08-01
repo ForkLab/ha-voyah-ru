@@ -115,9 +115,25 @@ class VoyahApiClient:
 
     async def async_start_heating(self) -> dict[str, Any]:
         """Send a command to start cabin heating."""
+        return await self.async_send_tbox_command("heating")
+
+    async def async_start_cooling(self) -> dict[str, Any]:
+        """Send a command to start cabin cooling."""
+        return await self.async_send_tbox_command("cooling")
+
+    async def async_toggle_central_locking(self) -> dict[str, Any]:
+        """Send a command to toggle central locking."""
+        return await self.async_send_tbox_command("centralLockingToggle")
+
+    async def async_toggle_trunk(self) -> dict[str, Any]:
+        """Send a command to toggle the trunk."""
+        return await self.async_send_tbox_command("trunkToggle")
+
+    async def async_send_tbox_command(self, command: str) -> dict[str, Any]:
+        """Send a command to the car TBox endpoint."""
         return await self._request(
             "POST",
-            f"/car-service/tbox/{self._car_id}/heating",
+            f"/car-service/tbox/{self._car_id}/{command}",
             json_data={},
         )
 
@@ -143,9 +159,10 @@ class VoyahApiClient:
     @staticmethod
     def _parse(raw: dict[str, Any]) -> dict[str, Any]:
         """Extract relevant fields from the tbox sensors response."""
-        sensors_data: dict[str, Any] = dict(raw.get("sensorsData") or {})
-        position_data: dict[str, Any] = raw.get("positionData") or {}
-        timestamp: int | None = raw.get("time")
+        payload = raw.get("sensors") if isinstance(raw.get("sensors"), dict) else raw
+        sensors_data: dict[str, Any] = dict(payload.get("sensorsData") or {})
+        position_data: dict[str, Any] = payload.get("positionData") or {}
+        timestamp: int | None = payload.get("time")
 
         if position_data.get("speed") is not None:
             sensors_data["speed"] = position_data["speed"]
@@ -159,7 +176,7 @@ class VoyahApiClient:
             "sensors_data": sensors_data,
             "position_data": position_data,
             "time": timestamp,
-            "last_ping": raw.get("lastPing"),
+            "last_ping": payload.get("lastPing"),
         }
 
     # ── Auth helpers (used by config_flow, not during polling) ──

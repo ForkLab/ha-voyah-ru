@@ -65,6 +65,7 @@
             "battery_voltage_12v": { "name": "12V battery voltage" },
             "odometer": { "name": "Odometer" },
             "outside_temperature": { "name": "Outside temperature" },
+            "inboard_temperature": { "name": "Interior temperature" },
             "battery_temperature": { "name": "Battery temperature" },
             "coolant_temperature": { "name": "Coolant temperature" },
             "climate_target_temperature": { "name": "Climate target temperature" },
@@ -74,13 +75,18 @@
             "tire_pressure_rear_left": { "name": "Tire pressure rear left" },
             "tire_pressure_rear_right": { "name": "Tire pressure rear right" },
             "speed": { "name": "Speed" },
-            "charging_end_time": { "name": "Estimated charging end time" }
+            "charging_end_time": { "name": "Estimated charging end time" },
+            "battery_soh": { "name": "Battery SOH" },
+            "last_ping": { "name": "Last ping" }
         },
         "device_tracker": {
             "location": { "name": "Location" }
         },
         "button": {
-            "start_heating": { "name": "Start heating" }
+            "start_heating": { "name": "Start heating" },
+            "start_cooling": { "name": "Start cooling" },
+            "toggle_central_locking": { "name": "Toggle central lock" },
+            "toggle_trunk": { "name": "Toggle trunk" }
         },
         "binary_sensor": {
             "ignition": { "name": "Ignition" },

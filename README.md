@@ -58,6 +58,9 @@
 | Кнопка | Описание |
 |---|---|
 | Запуск обогрева | Отправляет удалённую команду на запуск обогрева салона |
+| Запуск охлаждения | Отправляет удалённую команду на запуск охлаждения салона |
+| Переключить центральный замок | Отправляет toggle-команду центрального замка; итоговое состояние отображает бинарный сенсор |
+| Переключить багажник | Отправляет toggle-команду багажника; итоговое состояние отображает бинарный сенсор |
 
 ### Трекер устройства
 
@@ -204,6 +207,9 @@ python3 setup_auth.py
 | Обновление токена | `/id-service/auth/refresh-token` | POST `{refreshToken}` |
 | Получение данных авто | `/car-service/car/v2/{carId}` | GET |
 | Запуск обогрева | `/car-service/tbox/{carId}/heating` | POST |
+| Запуск охлаждения | `/car-service/tbox/{carId}/cooling` | POST |
+| Переключение центрального замка | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
+| Переключение багажника | `/car-service/tbox/{carId}/trunkToggle` | POST |
 
 ### Время жизни токенов
 
@@ -290,6 +296,9 @@ The sensor estimates when the battery will reach 100% using a sliding window of 
 | Button | Description |
 |---|---|
 | Start heating | Sends a remote command to start cabin heating |
+| Start cooling | Sends a remote command to start cabin cooling |
+| Toggle central lock | Sends the central lock toggle command; the resulting state is shown by the binary sensor |
+| Toggle trunk | Sends the trunk toggle command; the resulting state is shown by the binary sensor |
 
 ### Device Tracker
 
@@ -436,6 +445,9 @@ The integration uses the Voyah Assist API at `https://app.voyahassist.ru`.
 | Refresh token | `/id-service/auth/refresh-token` | POST `{refreshToken}` |
 | Get car data | `/car-service/car/v2/{carId}` | GET |
 | Start heating | `/car-service/tbox/{carId}/heating` | POST |
+| Start cooling | `/car-service/tbox/{carId}/cooling` | POST |
+| Toggle central lock | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
+| Toggle trunk | `/car-service/tbox/{carId}/trunkToggle` | POST |
 
 ### Token lifetimes
 
