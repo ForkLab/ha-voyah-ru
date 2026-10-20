@@ -68,11 +68,13 @@ SensorEntityDescription(
 
 Образец: `VoyahStartHeatingButton` в `button.py`.
 
-1. Метод в `VoyahApiClient` (`api.py`) через `self._request(...)` — он сам
-   обрабатывает 401 и рефреш токенов. Существующая команда обогрева использует
-   `POST /car-service/tbox/{car_id}/heating`, но не предполагай, что остальные
-   команды живут по тому же шаблону: точный метод и путь сверь с реальным
-   запросом приложения (HAR-файл, см. Рецепт 1).
+1. Команды отправляются через `VoyahApiClient.async_send_command(tbox_command, telemetry_command)`:
+   клиент сам выбирает API машины — новый (`POST /client-bff-service/telemetry-commands`
+   с `{commandName, imei}`) или прежний (`POST /car-service/tbox/{car_id}/{command}`).
+   Имена команд нового API — `activateCommand`/`deactivateCommand` из массива `buttons`
+   ответа телеметрии; для прежнего API сверь путь с реальным запросом приложения
+   (HAR-файл, см. Рецепт 1). Toggle-кнопки задают оба имени в описании
+   (`telemetry_command` + `telemetry_toggle_command`), выбор — по `command_states`.
 2. Класс кнопки в `button.py`: в `async_press` вызови метод клиента, затем
    `await self.coordinator.async_request_refresh()` — чтобы состояние обновилось.
 3. Если команда может отказать — пробрось понятную ошибку: HA покажет её

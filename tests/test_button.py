@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.voyah.button import BUTTON_DESCRIPTIONS, VoyahButton, VoyahStartHeatingButton
@@ -17,7 +18,7 @@ def _make_coordinator_with_command_client(hass: HomeAssistant) -> tuple[VoyahDat
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG_DATA)
     entry.add_to_hass(hass)
     client = MagicMock()
-    client.async_send_tbox_command = AsyncMock(return_value={})
+    client.async_send_command = AsyncMock(return_value={})
     client.async_get_car_data = AsyncMock(return_value=MOCK_CAR_DATA)
     coordinator = VoyahDataUpdateCoordinator(hass, client, entry, update_interval=60)
     coordinator.data = MOCK_CAR_DATA
@@ -33,8 +34,34 @@ async def test_button_press_sends_command_and_refreshes(hass: HomeAssistant) -> 
     with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock) as mock_refresh:
         await button.async_press()
 
-    coordinator.client.async_send_tbox_command.assert_called_once_with("cooling")
+    coordinator.client.async_send_command.assert_called_once_with("cooling", "coolingOn")
     mock_refresh.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("key", "command_states", "expected"),
+    [
+        ("toggle_central_locking", {"centralLockingOff": False}, ("centralLockingToggle", "centralLockingOff")),
+        ("toggle_central_locking", {"centralLockingOff": True}, ("centralLockingToggle", "centralLockingOn")),
+        ("toggle_trunk", {"trunkOpen": False}, ("trunkToggle", "trunkOpen")),
+        ("toggle_trunk", {"trunkOpen": True}, ("trunkToggle", "trunkClose")),
+        ("toggle_trunk", {}, ("trunkToggle", "trunkOpen")),
+        ("start_heating", {"heatingOn": True}, ("heating", "heatingOn")),
+    ],
+)
+async def test_button_press_picks_command_from_state(
+    hass: HomeAssistant, key: str, command_states: dict[str, bool], expected: tuple[str, str]
+) -> None:
+    """Toggles send the activate or deactivate command depending on the reported button state."""
+    coordinator, entry = _make_coordinator_with_command_client(hass)
+    coordinator.data = {**MOCK_CAR_DATA, "command_states": command_states}
+    description = next(d for d in BUTTON_DESCRIPTIONS if d.key == key)
+    button = VoyahButton(coordinator, description, entry)
+
+    with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+        await button.async_press()
+
+    coordinator.client.async_send_command.assert_called_once_with(*expected)
 
 
 async def test_button_unique_id(hass: HomeAssistant) -> None:

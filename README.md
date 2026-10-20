@@ -95,6 +95,21 @@
 | Обогрев руля | Обогрев рулевого колеса активен |
 | Обогрев сидений (водитель, пассажир, задние Л/П) | Обогрев каждого сиденья |
 
+### Новый API телеметрии
+
+Voyah Assist постепенно переводит автомобили на новый API телеметрии (`client-bff-service`).
+Переход включается флагом `newTelemetryEnabled` для модификации автомобиля: в октябре 2026 года
+он был включён для H56b, H97y и H53y. Интеграция, как и веб-приложение, проверяет этот флаг при
+запуске и сама выбирает API. Если флаг выключен, опрашивается прежний эндпоинт TBox,
+а флаг перепроверяется раз в 12 часов.
+
+Отличия для автомобилей на новом API:
+- Трекер получает координаты и курс из телеметрии — из тех же полей `sensors.lat`/`lon`/`course`, что и карта в веб-приложении. Высоты, числа спутников и HDOP в новом API нет: эти атрибуты трекера пустые, а точность местоположения равна 0.
+- Скорость в ответе не передаётся, поэтому сенсор скорости остаётся в состоянии «неизвестно».
+- «Зарядка» вычисляется так же, как статус «Идёт зарядка» в приложении: зарядный пистолет вставлен и напряжение 12V ≥ 13 В.
+- «Время с последнего пинга» — время с последнего обновления состояния автомобиля (`carStateUpdatedAt`).
+- Кнопки замка и багажника отправляют команду открытия или закрытия в зависимости от текущего состояния, которое сообщает API.
+
 ### Графики истории
 
 | Заряд батареи | Напряжение 12V батареи | Одометр |
@@ -205,22 +220,28 @@ python3 setup_auth.py
 | Проверка кода | `/id-service/auth/sign-in` | POST `{phone, code}` |
 | Выбор организации | `/id-service/org/sign-in` | POST `{orgId}` |
 | Обновление токена | `/id-service/auth/refresh-token` | POST `{refreshToken}` |
-| Получение данных авто | `/car-service/car/v2/{carId}` | GET |
-| Запуск обогрева | `/car-service/tbox/{carId}/heating` | POST |
-| Запуск охлаждения | `/car-service/tbox/{carId}/cooling` | POST |
-| Переключение центрального замка | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
-| Переключение багажника | `/car-service/tbox/{carId}/trunkToggle` | POST |
+| Получение данных авто (IMEI, VIN, модификация, SOH) | `/car-service/car/v2/{carId}` | GET |
+| Флаг нового API | `/config-service/config/flags?brand=&modification=&userId=&vin=` | GET |
+| Телеметрия (новый API) | `/client-bff-service/telemetry/{imei}` | GET |
+| Команды (новый API) | `/client-bff-service/telemetry-commands` | POST `{commandName, imei}` |
+| Телеметрия (прежний API) | `/car-service/tbox/{carId}/sensors` | GET |
+| Запуск обогрева (прежний API) | `/car-service/tbox/{carId}/heating` | POST |
+| Запуск охлаждения (прежний API) | `/car-service/tbox/{carId}/cooling` | POST |
+| Переключение центрального замка (прежний API) | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
+| Переключение багажника (прежний API) | `/car-service/tbox/{carId}/trunkToggle` | POST |
+
+Команды нового API: `heatingOn`, `coolingOn`, `centralLockingOff` / `centralLockingOn`, `trunkOpen` / `trunkClose`.
 
 ### Время жизни токенов
 
 | Токен | Срок | Примечание |
 |---|---|---|
-| Access-токен | 10 минут | Обновляется автоматически перед каждым запросом |
-| Refresh-токен | 90 дней | Новая пара выдаётся при каждом обновлении; фактически бессрочный |
+| Access-токен | 10 дней | Обновляется автоматически при ответе 401 |
+| Refresh-токен | 30 дней | Новая пара выдаётся при каждом обновлении; фактически бессрочный |
 
 Интеграция автоматически обновляет access-токен при истечении (HTTP 401) и сохраняет обновлённые токены в запись конфигурации, чтобы они переживали перезапуски Home Assistant.
 
-Если refresh-токен истечёт (после 90 дней бездействия), потребуется повторная аутентификация — через config flow или получение новых токенов вручную.
+Если refresh-токен истечёт (после 30 дней бездействия), потребуется повторная аутентификация — через config flow или получение новых токенов вручную.
 
 ## Решение проблем
 
@@ -333,6 +354,21 @@ The integration creates a `device_tracker` entity that shows your car's position
 | Wheel heating | Steering wheel heating active |
 | Seat heating (driver, passenger, rear L/R) | Individual seat heating |
 
+### New telemetry API
+
+Voyah Assist is gradually moving cars to a new telemetry API (`client-bff-service`). The switch is
+controlled by the `newTelemetryEnabled` flag for the car's modification: as of October 2026 it was
+enabled for H56b, H97y and H53y. Like the web app, the integration checks this flag on startup and
+picks the API automatically. While the flag is off, the legacy TBox endpoint is polled and the flag
+is re-checked every 12 hours.
+
+Differences for cars on the new API:
+- The tracker gets coordinates and course from telemetry — the same `sensors.lat`/`lon`/`course` fields the web app map uses. The new API has no altitude, satellite count or HDOP, so those tracker attributes are empty and location accuracy is 0.
+- Speed is not reported, so the speed sensor stays "unknown".
+- "Charging" is derived the same way as the app's "Charging" status: the charging gun is inserted and the 12V voltage is ≥ 13 V.
+- "Last ping" is the time since the car last reported its state (`carStateUpdatedAt`).
+- The lock and trunk buttons send an open or close command depending on the current state reported by the API.
+
 ### History Charts
 
 | Battery charge | 12V battery voltage | Odometer |
@@ -443,22 +479,28 @@ The integration uses the Voyah Assist API at `https://app.voyahassist.ru`.
 | Verify code | `/id-service/auth/sign-in` | POST `{phone, code}` |
 | Select org | `/id-service/org/sign-in` | POST `{orgId}` |
 | Refresh token | `/id-service/auth/refresh-token` | POST `{refreshToken}` |
-| Get car data | `/car-service/car/v2/{carId}` | GET |
-| Start heating | `/car-service/tbox/{carId}/heating` | POST |
-| Start cooling | `/car-service/tbox/{carId}/cooling` | POST |
-| Toggle central lock | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
-| Toggle trunk | `/car-service/tbox/{carId}/trunkToggle` | POST |
+| Get car data (IMEI, VIN, modification, SOH) | `/car-service/car/v2/{carId}` | GET |
+| New API flag | `/config-service/config/flags?brand=&modification=&userId=&vin=` | GET |
+| Telemetry (new API) | `/client-bff-service/telemetry/{imei}` | GET |
+| Commands (new API) | `/client-bff-service/telemetry-commands` | POST `{commandName, imei}` |
+| Telemetry (legacy API) | `/car-service/tbox/{carId}/sensors` | GET |
+| Start heating (legacy API) | `/car-service/tbox/{carId}/heating` | POST |
+| Start cooling (legacy API) | `/car-service/tbox/{carId}/cooling` | POST |
+| Toggle central lock (legacy API) | `/car-service/tbox/{carId}/centralLockingToggle` | POST |
+| Toggle trunk (legacy API) | `/car-service/tbox/{carId}/trunkToggle` | POST |
+
+New API commands: `heatingOn`, `coolingOn`, `centralLockingOff` / `centralLockingOn`, `trunkOpen` / `trunkClose`.
 
 ### Token lifetimes
 
 | Token | Lifetime | Notes |
 |---|---|---|
-| Access token | 10 minutes | Refreshed automatically before each request |
-| Refresh token | 90 days | New pair issued on every refresh; effectively indefinite |
+| Access token | 10 days | Refreshed automatically on a 401 response |
+| Refresh token | 30 days | New pair issued on every refresh; effectively indefinite |
 
 The integration automatically refreshes the access token when it expires (HTTP 401) and persists the updated tokens to the config entry, so they survive Home Assistant restarts.
 
-If the refresh token itself expires (after 90 days of inactivity), you will need to re-authenticate — either via the config flow or by obtaining new tokens manually.
+If the refresh token itself expires (after 30 days of inactivity), you will need to re-authenticate — either via the config flow or by obtaining new tokens manually.
 
 ## Troubleshooting
 

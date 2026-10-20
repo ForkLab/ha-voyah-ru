@@ -39,8 +39,16 @@ tests/                 # юнит-тесты, общие фикстуры в con
 
 ## Поток данных
 
-1. `VoyahApiClient.async_get_car_data()` опрашивает `/car-service/tbox/{car_id}/sensors`
-   и нормализует ответ в `{"sensors_data": ..., "position_data": ..., "time": ..., "last_ping": ...}` (метод `_parse`).
+1. `VoyahApiClient.async_get_car_data()` при первом вызове выясняет, какой API обслуживает машину,
+   так же, как это делает веб-приложение: `imei`/`vin`/`carModel.modname` из `/car-service/car/v2/{car_id}`
+   → флаг `newTelemetryEnabled` из `/config-service/config/flags`. Если флаг включён, клиент опрашивает
+   `/client-bff-service/telemetry/{imei}` (метод `_parse_telemetry`: строки → числа, новые ключи →
+   прежние имена вроде `remainsMileage`/`chargingStatus`, чтобы не менять unique_id). Если выключен —
+   `/car-service/tbox/{car_id}/sensors` (метод `_parse`), а флаг перепроверяется раз в 12 ч.
+   Оба парсера возвращают `{"sensors_data": ..., "position_data": ..., "time": ..., "last_ping": ...}`,
+   новый — ещё `command_states` (состояния кнопок для toggle-команд).
+   Команды кнопок: `async_send_command(tbox_command, telemetry_command)` → `POST /client-bff-service/telemetry-commands`
+   `{commandName, imei}` или прежний `POST /car-service/tbox/{car_id}/{command}`.
 2. `VoyahDataUpdateCoordinator` хранит этот словарь; все сущности читают из `coordinator.data`.
 3. При 401 клиент сам обновляет токены через refresh-token; координатор
    персистит новые токены в config entry (`_persist_tokens_if_changed`).
