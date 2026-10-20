@@ -29,11 +29,11 @@ description: Написание и изменение кода интеграц�
 
 ```python
 SensorEntityDescription(
-    key="coolantTemp",                       # точное имя ключа из API
-    translation_key="coolant_temperature",   # snake_case
+    key="coolantTemp",  # точное имя ключа из API
+    translation_key="coolant_temperature",  # snake_case
     native_unit_of_measurement=UnitOfTemperature.CELSIUS,
     device_class=SensorDeviceClass.TEMPERATURE,  # если подходит стандартный
-    state_class=SensorStateClass.MEASUREMENT,    # TOTAL_INCREASING для одометров
+    state_class=SensorStateClass.MEASUREMENT,  # TOTAL_INCREASING для одометров
     # icon="mdi:..." — только если нет device_class с подходящей иконкой
 )
 ```
@@ -75,10 +75,13 @@ SensorEntityDescription(
    ответа телеметрии; для прежнего API сверь путь с реальным запросом приложения
    (HAR-файл, см. Рецепт 1). Toggle-кнопки задают оба имени в описании
    (`telemetry_command` + `telemetry_toggle_command`), выбор — по `command_states`.
-2. Класс кнопки в `button.py`: в `async_press` вызови метод клиента, затем
-   `await self.coordinator.async_request_refresh()` — чтобы состояние обновилось.
-3. Если команда может отказать — пробрось понятную ошибку: HA покажет её
-   пользователю (`HomeAssistantError` с текстом).
+2. Класс кнопки в `button.py`: в `async_press` вызови
+   `await self.coordinator.async_send_command(command, telemetry_command)`. Координатор
+   отправит команду через клиент, переведёт `VoyahApiError` в `HomeAssistantError` (HA покажет
+   её пользователю) и обновит данные несколько раз с задержками `COMMAND_REFRESH_DELAY_SECONDS`,
+   пока машина выполняет команду. Свитчи (`switch.py`) работают так же.
+3. Команда, которой нет у прежнего API (`command=None`), создаётся только если её
+   `telemetry_command` есть в `command_states`.
 4. Переводы (`strings.json`, en, ru) и README.
 
 ## Рецепт 4: новый эндпоинт API

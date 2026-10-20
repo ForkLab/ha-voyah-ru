@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import UTC, datetime, timedelta
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -192,9 +193,14 @@ class VoyahChargingEndTimeSensor(CoordinatorEntity[VoyahDataUpdateCoordinator], 
     def _handle_coordinator_update(self) -> None:
         """Recalculate only when charging state or battery percentage changes."""
         sensors = self.coordinator.data.get("sensors_data", {})
-        is_charging = bool(sensors.get("chargingStatus"))
+        charging = sensors.get("chargingStatus")
 
-        if not is_charging:
+        if charging is None:
+            # Unknown charging state (e.g. no 12V voltage in this snapshot): keep the current estimate.
+            super()._handle_coordinator_update()
+            return
+
+        if not charging:
             if self._was_charging:
                 _LOGGER.debug("Charging stopped, resetting tracking")
                 self._reset_tracking()
@@ -317,18 +323,26 @@ class VoyahCarStatusSensor(CoordinatorEntity[VoyahDataUpdateCoordinator], Sensor
         online = sensors.get("isOnline")
         if online is None:
             return None
-        if not online:
+        if not _flag(online):
             return "offline"
 
+        # The web app runs the same checks on legacy keys too (ready, chargingStatus, ignitionStatus);
+        # the new telemetry API does not report them, so only its own keys are used here.
         voltage = sensors.get("12VBatteryVoltage")
         powered = isinstance(voltage, (int, float)) and voltage >= CHARGING_MIN_12V_VOLTAGE
-        if powered and (sensors.get("isChargingGunInserted") is True or sensors.get("chargingStatus") == 1):
+        if powered and _flag(sensors.get("isChargingGunInserted")):
             return "charging"
-
-        parked = sensors.get("isParkedOn")
-        if sensors.get("ready") == 1 or (parked is not None and not parked):
+        if _flag(sensors.get("isParkedOn")) is False:
             return "driving"
-
-        if sensors.get("isIgnitionOn") is True or sensors.get("ignitionStatus") == 1:
+        if _flag(sensors.get("isIgnitionOn")):
             return "ignition"
         return "available"
+
+
+def _flag(value: Any) -> bool | None:
+    """Read a telemetry flag the way the web app does: true/1 → True, false/other numbers → False."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    return None

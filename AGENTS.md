@@ -45,16 +45,23 @@ tests/                 # юнит-тесты, общие фикстуры в con
    → флаг `newTelemetryEnabled` из `/config-service/config/flags`. Если флаг включён, клиент опрашивает
    `/client-bff-service/telemetry/{imei}` (метод `_parse_telemetry`: строки → числа, новые ключи →
    прежние имена вроде `remainsMileage`/`chargingStatus`, чтобы не менять unique_id). Если выключен —
-   `/car-service/tbox/{car_id}/sensors` (метод `_parse`), а флаг перепроверяется раз в 12 ч.
+   `/car-service/tbox/{car_id}/sensors` (метод `_parse`). Флаг перепроверяется раз в 12 ч в обе стороны;
+   при ошибке проверки остаётся последний известный API (до первой успешной — прежний, как в вебе)
+   с повтором через 5 мин, ошибка запроса телеметрии тоже ускоряет перепроверку.
    Оба парсера возвращают `{"sensors_data": ..., "position_data": ..., "time": ..., "last_ping": ...}`,
    новый — ещё `command_states` (состояния кнопок для toggle-команд и свитчей) и `checks`
    (`firmwareCheck`/`settingsCheck`). Сущности, которых нет у старого API (статус авто,
    свитчи, «Найти автомобиль», проверки версий), создаются только при наличии этих данных.
-   Команды кнопок: `async_send_command(tbox_command, telemetry_command)` → `POST /client-bff-service/telemetry-commands`
-   `{commandName, imei}` или прежний `POST /car-service/tbox/{car_id}/{command}`.
+   Команды кнопок и свитчей: `coordinator.async_send_command(tbox_command, telemetry_command)` →
+   клиент → `POST /client-bff-service/telemetry-commands` `{commandName, imei}` или прежний
+   `POST /car-service/tbox/{car_id}/{command}`; координатор переводит ошибку в `HomeAssistantError`
+   и обновляет данные через `COMMAND_REFRESH_DELAY_SECONDS`.
 2. `VoyahDataUpdateCoordinator` хранит этот словарь; все сущности читают из `coordinator.data`.
-3. При 401 клиент сам обновляет токены через refresh-token; координатор
-   персистит новые токены в config entry (`_persist_tokens_if_changed`).
+   Если машина сменила API (`client.uses_telemetry_api`), координатор перезагружает entry,
+   чтобы платформы заново создали сущности по новому снимку.
+3. При 401 клиент сам обновляет токены через refresh-token (один рефреш на все одновременные 401,
+   под `asyncio.Lock`); оба координатора персистят новые токены в config entry
+   (`VoyahBaseCoordinator._persist_tokens_if_changed`).
 4. `VoyahApiAuthError` → `ConfigEntryAuthFailed` (запускает reauth flow);
    `VoyahApiError` → `UpdateFailed` (сущности становятся unavailable, HA ретраит).
 

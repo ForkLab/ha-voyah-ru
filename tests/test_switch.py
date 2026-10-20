@@ -47,15 +47,14 @@ async def test_switch_state_none_when_missing(hass: HomeAssistant) -> None:
         ("cooling", "async_turn_off", "coolingOff"),
     ],
 )
-async def test_switch_sends_command_and_refreshes(hass: HomeAssistant, key: str, method: str, command: str) -> None:
-    """Turning the switch on/off sends the matching command and refreshes data."""
+async def test_switch_sends_command(hass: HomeAssistant, key: str, method: str, command: str) -> None:
+    """Turning the switch on/off sends the matching command through the coordinator."""
     switch = _make_switch(hass, key)
 
-    with patch.object(switch.coordinator, "async_request_refresh", new_callable=AsyncMock) as mock_refresh:
+    with patch.object(switch.coordinator, "async_send_command", new_callable=AsyncMock) as mock_send:
         await getattr(switch, method)()
 
-    switch.coordinator.client.async_send_command.assert_called_once_with(None, command)
-    mock_refresh.assert_called_once()
+    mock_send.assert_called_once_with(None, command)
 
 
 async def test_switch_raises_ha_error_on_api_error(hass: HomeAssistant) -> None:

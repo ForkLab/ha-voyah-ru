@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import VoyahApiError
-from .const import COMMAND_REFRESH_DELAY_SECONDS, CONF_CAR_ID, CONF_CAR_NAME, DOMAIN
+from .const import CONF_CAR_ID, CONF_CAR_NAME, DOMAIN
 from .coordinator import VoyahDataUpdateCoordinator
 
 
@@ -113,30 +109,15 @@ class VoyahButton(CoordinatorEntity[VoyahDataUpdateCoordinator], ButtonEntity):
 
     async def async_press(self) -> None:
         """Send the configured remote command."""
-        try:
-            await self.coordinator.client.async_send_command(self.entity_description.command, self._telemetry_command())
-        except VoyahApiError as err:
-            raise HomeAssistantError(f"Voyah command failed: {err}") from err
-        if self.hass is None:
-            await self.coordinator.async_request_refresh()
-            return
-
-        for delay in COMMAND_REFRESH_DELAY_SECONDS:
-            async_call_later(self.hass, delay, self._async_delayed_refresh)
+        await self.coordinator.async_send_command(self.entity_description.command, self._telemetry_command())
 
     def _telemetry_command(self) -> str:
         """Pick the activate or deactivate command from the button state reported by the API."""
         description = self.entity_description
-        command_states = (self.coordinator.data or {}).get("command_states") or {}
+        command_states = self.coordinator.data.get("command_states", {})
         if description.telemetry_toggle_command and command_states.get(description.telemetry_command):
             return description.telemetry_toggle_command
         return description.telemetry_command
-
-    @callback
-    def _async_delayed_refresh(self, _now: datetime) -> None:
-        """Request a coordinator refresh after the car has time to apply the command."""
-        if self.hass is not None:
-            self.hass.async_create_task(self.coordinator.async_request_refresh())
 
 
 class VoyahStartHeatingButton(VoyahButton):

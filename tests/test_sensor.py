@@ -243,6 +243,32 @@ async def test_update_resets_tracking_when_charging_stops(hass: HomeAssistant) -
     assert sensor._cached_end_time is None
 
 
+async def test_update_keeps_tracking_when_charging_state_unknown(hass: HomeAssistant) -> None:
+    """An unknown charging state (no 12V voltage on the new API) does not reset the estimate."""
+    data = {
+        **MOCK_CAR_DATA,
+        "sensors_data": {**MOCK_CAR_DATA["sensors_data"], "chargingStatus": True, "batteryPercentage": 70},
+        "time": 1000,
+    }
+    coordinator = make_coordinator(hass, data)
+    entry = make_config_entry(hass)
+    sensor = VoyahChargingEndTimeSensor(coordinator, entry)
+    end_time = datetime(2024, 1, 1, tzinfo=UTC)
+    sensor._cached_end_time = end_time
+
+    coordinator.data = {
+        **data,
+        "sensors_data": {**data["sensors_data"], "chargingStatus": None, "batteryPercentage": 71},
+        "time": 2000,
+    }
+    with patch.object(sensor, "async_write_ha_state"):
+        sensor._handle_coordinator_update()
+
+    assert sensor._was_charging is True
+    assert sensor._pct_history[-1] == (70, 1000)
+    assert sensor.native_value == end_time
+
+
 async def test_update_adds_point_and_recalculates_on_pct_change(hass: HomeAssistant) -> None:
     """New data point added and end time recalculated when pct changes."""
     data = {
@@ -353,15 +379,19 @@ async def test_soh_sensor_unique_id(hass: HomeAssistant) -> None:
     ("sensors", "expected"),
     [
         ({"isOnline": False, "isChargingGunInserted": True, "12VBatteryVoltage": 14.0}, "offline"),
+        ({"isOnline": 0}, "offline"),
         ({"isChargingGunInserted": True, "12VBatteryVoltage": 14.0, "isParkedOn": False}, "charging"),
-        ({"chargingStatus": 1, "12VBatteryVoltage": 13}, "charging"),
+        ({"isChargingGunInserted": 1, "12VBatteryVoltage": 13}, "charging"),
         ({"isChargingGunInserted": True, "12VBatteryVoltage": 12.4}, "available"),
         ({"isChargingGunInserted": True}, "available"),
         ({"isParkedOn": False, "isIgnitionOn": True}, "driving"),
-        ({"ready": 1, "isParkedOn": True}, "driving"),
+        ({"isParkedOn": 0}, "driving"),
         ({"isParkedOn": True, "isIgnitionOn": True}, "ignition"),
-        ({"ignitionStatus": 1}, "ignition"),
+        ({"isIgnitionOn": 1}, "ignition"),
         ({"isParkedOn": True, "isIgnitionOn": False}, "available"),
+        ({"isParkedOn": "n/a", "isIgnitionOn": "n/a"}, "available"),
+        # Legacy keys are not part of the new telemetry API and are ignored.
+        ({"ready": 1, "chargingStatus": 1, "ignitionStatus": 1, "12VBatteryVoltage": 14.0}, "available"),
     ],
 )
 async def test_car_status_sensor_mirrors_web_app(

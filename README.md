@@ -118,13 +118,18 @@
 Voyah Assist постепенно переводит автомобили на новый API телеметрии (`client-bff-service`).
 Переход включается флагом `newTelemetryEnabled` для модификации автомобиля: в октябре 2026 года
 он был включён для H56b, H97y и H53y. Интеграция, как и веб-приложение, проверяет этот флаг при
-запуске и сама выбирает API. Если флаг выключен, опрашивается прежний эндпоинт TBox,
-а флаг перепроверяется раз в 12 часов.
+запуске и сама выбирает API. Если флаг выключен, опрашивается прежний эндпоинт TBox.
+
+Флаг перепроверяется раз в 12 часов в обе стороны. Если автомобиль перевели на новый API или вернули
+на прежний, интеграция переключается сама и перезагружается, чтобы набор сущностей соответствовал API.
+Если проверить флаг не удалось, остаётся последний известный API, а проверка повторяется через
+5 минут. До первой успешной проверки это прежний API — так же поступает веб-приложение. Если запрос
+телеметрии нового API завершился ошибкой, флаг тоже перепроверяется через 5 минут.
 
 Отличия для автомобилей на новом API:
 - Трекер получает координаты и курс из телеметрии — из тех же полей `sensors.lat`/`lon`/`course`, что и карта в веб-приложении. Высоты, числа спутников и HDOP в новом API нет: эти атрибуты трекера пустые, а точность местоположения равна 0.
 - Скорость в ответе не передаётся, поэтому сенсор скорости остаётся в состоянии «неизвестно».
-- «Зарядка» вычисляется так же, как статус «Идёт зарядка» в приложении: зарядный пистолет вставлен и напряжение 12V ≥ 13 В.
+- «Зарядка» вычисляется так же, как статус «Идёт зарядка» в приложении: зарядный пистолет вставлен и напряжение 12V ≥ 13 В. Если пистолет вставлен, а напряжение API не передал, состояние «неизвестно», и оценка времени окончания зарядки не сбрасывается.
 - «Время с последнего пинга» — время с последнего обновления состояния автомобиля (`carStateUpdatedAt`).
 - Кнопки замка и багажника отправляют команду открытия или закрытия в зависимости от текущего состояния, которое сообщает API.
 - Появляются сущности, которых нет у прежнего API: «Статус автомобиля», «Уровень сигнала», «Зарядный кабель», «Режим парковки», «В сети», «Дверь сзади справа», проверки версий прошивки и настроек, кнопка «Найти автомобиль» и переключатели «Прогрев» и «Охлаждение».
@@ -134,10 +139,14 @@ Voyah Assist постепенно переводит автомобили на �
 Повторяет статус в карточке автомобиля веб-приложения. Проверки идут по порядку, побеждает первая подходящая:
 
 1. **Не в сети** — API сообщает `isOnline = false`.
-2. **Идёт зарядка** — зарядный пистолет вставлен (`isChargingGunInserted`) или `chargingStatus = 1`, и напряжение 12V ≥ 13 В.
-3. **В пути** — `ready = 1` или машина не на парковке (`isParkedOn = false`).
-4. **Зажигание включено** — `isIgnitionOn` или `ignitionStatus = 1`.
+2. **Идёт зарядка** — зарядный пистолет вставлен (`isChargingGunInserted`) и напряжение 12V ≥ 13 В.
+3. **В пути** — машина не на парковке (`isParkedOn = false`).
+4. **Зажигание включено** — `isIgnitionOn`.
 5. **Доступен** — во всех остальных случаях.
+
+Флаги читаются так же, как в веб-приложении: `true` или `1` — да, `false` или другое число — нет.
+Веб-приложение в тех же проверках смотрит и на ключи прежнего API (`ready`, `chargingStatus`,
+`ignitionStatus`). В новом API их нет, поэтому интеграция их не использует.
 
 ### Графики истории
 
@@ -406,13 +415,18 @@ The integration creates a `device_tracker` entity that shows your car's position
 Voyah Assist is gradually moving cars to a new telemetry API (`client-bff-service`). The switch is
 controlled by the `newTelemetryEnabled` flag for the car's modification: as of October 2026 it was
 enabled for H56b, H97y and H53y. Like the web app, the integration checks this flag on startup and
-picks the API automatically. While the flag is off, the legacy TBox endpoint is polled and the flag
-is re-checked every 12 hours.
+picks the API automatically. While the flag is off, the legacy TBox endpoint is polled.
+
+The flag is re-checked every 12 hours in both directions. If the car is moved to the new API or back
+to the legacy one, the integration switches on its own and reloads so that its entities match the API.
+If the flag cannot be checked, the last known API is kept and the check is retried in 5 minutes.
+Before the first successful check that is the legacy API — the web app does the same. If a telemetry
+request to the new API fails, the flag is also re-checked in 5 minutes.
 
 Differences for cars on the new API:
 - The tracker gets coordinates and course from telemetry — the same `sensors.lat`/`lon`/`course` fields the web app map uses. The new API has no altitude, satellite count or HDOP, so those tracker attributes are empty and location accuracy is 0.
 - Speed is not reported, so the speed sensor stays "unknown".
-- "Charging" is derived the same way as the app's "Charging" status: the charging gun is inserted and the 12V voltage is ≥ 13 V.
+- "Charging" is derived the same way as the app's "Charging" status: the charging gun is inserted and the 12V voltage is ≥ 13 V. If the gun is inserted but the API does not report the voltage, the state is "unknown" and the charging end time estimate is not reset.
 - "Last ping" is the time since the car last reported its state (`carStateUpdatedAt`).
 - The lock and trunk buttons send an open or close command depending on the current state reported by the API.
 - Entities the legacy API does not have are added: "Car status", "Signal level", "Charging cable", "Parked", "Online", "Door rear right", firmware and settings checks, the "Find car" button and the "Heating" and "Cooling" switches.
@@ -422,10 +436,14 @@ Differences for cars on the new API:
 Mirrors the status shown on the car card in the web app. Checks run in order; the first match wins:
 
 1. **Offline** — the API reports `isOnline = false`.
-2. **Charging** — the charging gun is inserted (`isChargingGunInserted`) or `chargingStatus = 1`, and the 12V voltage is ≥ 13 V.
-3. **Driving** — `ready = 1` or the car is not parked (`isParkedOn = false`).
-4. **Ignition on** — `isIgnitionOn` or `ignitionStatus = 1`.
+2. **Charging** — the charging gun is inserted (`isChargingGunInserted`) and the 12V voltage is ≥ 13 V.
+3. **Driving** — the car is not parked (`isParkedOn = false`).
+4. **Ignition on** — `isIgnitionOn`.
 5. **Available** — otherwise.
+
+Flags are read the way the web app reads them: `true` or `1` means yes, `false` or any other number
+means no. The web app runs the same checks on legacy API keys as well (`ready`, `chargingStatus`,
+`ignitionStatus`). The new API does not report them, so the integration does not use them.
 
 ### History Charts
 

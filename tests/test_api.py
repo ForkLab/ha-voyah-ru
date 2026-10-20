@@ -1,10 +1,13 @@
 """Tests for Voyah API client."""
 
+import asyncio
 import base64
 from datetime import UTC, datetime
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 import time_machine
 
@@ -38,10 +41,11 @@ def _make_client(session: MagicMock, access_token: str = MOCK_ACCESS_TOKEN) -> V
     return VoyahApiClient(session, MOCK_CAR_ID, access_token, MOCK_REFRESH_TOKEN)
 
 
-def _mock_response(status: int, json_data: dict) -> MagicMock:
+def _mock_response(status: int, json_data: Any = None, *, text: str | None = None) -> MagicMock:
     resp = MagicMock()
     resp.status = status
     resp.json = AsyncMock(return_value=json_data)
+    resp.text = AsyncMock(return_value=json.dumps(json_data) if text is None else text)
     resp.__aenter__ = AsyncMock(return_value=resp)
     resp.__aexit__ = AsyncMock(return_value=False)
     return resp
@@ -64,6 +68,11 @@ def _routed_session(routes: dict[str, MagicMock]) -> MagicMock:
 
 def _requested_paths(session: MagicMock) -> list[str]:
     return [call.args[1].removeprefix(API_BASE_URL) for call in session.request.call_args_list]
+
+
+def _at(seconds: float):
+    """Pin the monotonic clock the client uses for API checks."""
+    return patch("custom_components.voyah.api.time.monotonic", return_value=seconds)
 
 
 def _fake_jwt(claims: dict) -> str:
@@ -187,6 +196,21 @@ async def test_parse_telemetry_not_charging_when_12v_low() -> None:
     assert sensors["chargingStatus"] is False
 
 
+async def test_parse_telemetry_charging_unknown_without_12v() -> None:
+    """With the gun inserted but no 12V voltage reported, charging is unknown rather than off."""
+    raw = {**MOCK_TELEMETRY_RESPONSE, "sensors": {"isChargingGunInserted": True, "12VBatteryVoltage": ""}}
+    sensors = VoyahApiClient._parse_telemetry(raw)["sensors_data"]
+    assert "chargingStatus" in sensors
+    assert sensors["chargingStatus"] is None
+
+
+async def test_parse_telemetry_not_charging_without_gun() -> None:
+    """Without the charging gun the car is not charging, whatever the 12V voltage."""
+    raw = {**MOCK_TELEMETRY_RESPONSE, "sensors": {"isChargingGunInserted": False}}
+    sensors = VoyahApiClient._parse_telemetry(raw)["sensors_data"]
+    assert sensors["chargingStatus"] is False
+
+
 async def test_parse_telemetry_position_time_and_last_ping() -> None:
     """GPS goes to position_data; time and last_ping come from carStateUpdatedAt."""
     now = datetime.fromtimestamp(1792471790.719 + 30, tz=UTC)
@@ -217,8 +241,9 @@ async def test_parse_telemetry_collects_command_states() -> None:
 
 
 async def test_parse_telemetry_collects_checks() -> None:
-    """Firmware and settings checks are passed through for diagnostic sensors."""
-    checks = VoyahApiClient._parse_telemetry(MOCK_TELEMETRY_RESPONSE)["checks"]
+    """Version checks (top-level *Check objects) are passed through for diagnostic sensors."""
+    raw = {**MOCK_TELEMETRY_RESPONSE, "brokenCheck": "n/a"}
+    checks = VoyahApiClient._parse_telemetry(raw)["checks"]
     assert checks == {
         "firmwareCheck": {"expected": "fw-1.0", "actual": "fw-1.1", "mismatch": True},
         "settingsCheck": {"expected": "cfg-1", "actual": "cfg-1", "mismatch": False},
@@ -230,6 +255,17 @@ async def test_parse_telemetry_online_from_top_level() -> None:
     raw = {**MOCK_TELEMETRY_RESPONSE, "isOnline": False}
     sensors = VoyahApiClient._parse_telemetry(raw)["sensors_data"]
     assert sensors["isOnline"] is False
+
+
+async def test_parse_telemetry_ignores_malformed_sections() -> None:
+    """Sections of an unexpected type are skipped instead of raising."""
+    raw = {
+        "sensors": ["batteryPercentage", "91"],
+        "buttons": ["search", {"activateCommand": 5}, {"activateCommand": "search", "status": True}],
+    }
+    result = VoyahApiClient._parse_telemetry(raw)
+    assert result["sensors_data"] == {}
+    assert result["command_states"] == {"search": True}
 
 
 async def test_parse_telemetry_handles_empty_response() -> None:
@@ -325,18 +361,136 @@ async def test_get_car_data_skips_flags_without_imei() -> None:
 
 
 async def test_get_car_data_falls_back_to_legacy_when_detection_fails() -> None:
-    """If the flags service fails, poll the legacy API and retry detection next time."""
+    """If the flags service fails, poll the legacy API (as the web app does) and retry a bit later."""
     routes = _legacy_routes()
     routes["/config-service/config/flags"] = _mock_response(500, {})
     session = _routed_session(routes)
     client = _make_client(session)
 
-    data = await client.async_get_car_data()
-    assert data["sensors_data"]["batteryPercentage"] == 80
+    with _at(1000.0):
+        data = await client.async_get_car_data()
+        assert data["sensors_data"]["batteryPercentage"] == 80
+
+        session.request.reset_mock()
+        await client.async_get_car_data()
+    assert _requested_paths(session) == [f"/car-service/tbox/{MOCK_CAR_ID}/sensors"]
 
     session.request.reset_mock()
-    await client.async_get_car_data()
+    with _at(1000.0 + 6 * 60):
+        await client.async_get_car_data()
     assert "/config-service/config/flags" in _requested_paths(session)
+
+
+async def test_get_car_data_rechecks_flag_on_new_api() -> None:
+    """A reverted rollout is noticed at the periodic re-check and the legacy API is used again."""
+    routes = _new_telemetry_routes()
+    routes[f"/car-service/tbox/{MOCK_CAR_ID}/sensors"] = _mock_response(200, LEGACY_SENSORS_RESPONSE)
+    session = _routed_session(routes)
+    client = _make_client(session)
+
+    with _at(1000.0):
+        await client.async_get_car_data()
+    assert client.uses_telemetry_api is True
+
+    routes["/config-service/config/flags"] = _mock_response(200, {"flags": {"newTelemetryEnabled": False}})
+    session.request.reset_mock()
+    with _at(1000.0 + 13 * 3600):
+        data = await client.async_get_car_data()
+
+    assert client.uses_telemetry_api is False
+    assert data["sensors_data"]["batteryPercentage"] == 80
+    assert _requested_paths(session)[-1] == f"/car-service/tbox/{MOCK_CAR_ID}/sensors"
+
+
+async def test_get_car_data_keeps_new_api_when_recheck_fails() -> None:
+    """A failed re-check keeps the known API and is retried after a short delay, not on every poll."""
+    routes = _new_telemetry_routes()
+    session = _routed_session(routes)
+    client = _make_client(session)
+    with _at(1000.0):
+        await client.async_get_car_data()
+
+    routes["/config-service/config/flags"] = _mock_response(500, {})
+    recheck_at = 1000.0 + 13 * 3600
+    session.request.reset_mock()
+    with _at(recheck_at):
+        data = await client.async_get_car_data()
+    assert data["sensors_data"]["batteryPercentage"] == 91
+    assert _requested_paths(session)[-1] == f"/client-bff-service/telemetry/{MOCK_IMEI}"
+
+    session.request.reset_mock()
+    with _at(recheck_at + 60):
+        await client.async_get_car_data()
+    assert _requested_paths(session) == [f"/client-bff-service/telemetry/{MOCK_IMEI}"]
+
+    session.request.reset_mock()
+    with _at(recheck_at + 6 * 60):
+        await client.async_get_car_data()
+    assert "/config-service/config/flags" in _requested_paths(session)
+
+
+async def test_get_car_data_rechecks_flag_soon_after_telemetry_failure() -> None:
+    """When the telemetry endpoint fails, the rollout flag is checked again soon."""
+    routes = _new_telemetry_routes()
+    session = _routed_session(routes)
+    client = _make_client(session)
+    with _at(1000.0):
+        await client.async_get_car_data()
+
+    routes[f"/client-bff-service/telemetry/{MOCK_IMEI}"] = _mock_response(404, {})
+    with _at(1060.0), pytest.raises(VoyahApiError):
+        await client.async_get_car_data()
+
+    session.request.reset_mock()
+    with _at(1060.0 + 6 * 60), pytest.raises(VoyahApiError):
+        await client.async_get_car_data()
+    assert "/config-service/config/flags" in _requested_paths(session)
+
+
+async def test_get_car_data_escapes_imei_in_path() -> None:
+    """The IMEI from the car card is URL-encoded before it goes into the telemetry path."""
+    routes = _new_telemetry_routes()
+    routes[f"/car-service/car/v2/{MOCK_CAR_ID}"] = _mock_response(200, {**MOCK_CAR_INFO_DATA, "imei": "86/0?1"})
+    routes["/client-bff-service/telemetry/86%2F0%3F1"] = routes.pop(f"/client-bff-service/telemetry/{MOCK_IMEI}")
+    session = _routed_session(routes)
+    client = _make_client(session)
+
+    data = await client.async_get_car_data()
+
+    assert data["sensors_data"]["batteryPercentage"] == 91
+
+
+async def test_get_car_data_accepts_numeric_imei() -> None:
+    """A numeric IMEI in the car card is used as a string."""
+    routes = _new_telemetry_routes()
+    routes[f"/car-service/car/v2/{MOCK_CAR_ID}"] = _mock_response(200, {**MOCK_CAR_INFO_DATA, "imei": int(MOCK_IMEI)})
+    client = _make_client(_routed_session(routes))
+
+    data = await client.async_get_car_data()
+
+    assert data["sensors_data"]["batteryPercentage"] == 91
+
+
+async def test_get_car_data_sends_only_string_flag_params() -> None:
+    """Car card fields of unexpected types are left out of the flags query."""
+    car_info = {**MOCK_CAR_INFO_DATA, "carModel": "H56b", "vin": 123}
+    session = _routed_session(_legacy_routes(car_info))
+    client = _make_client(session)
+
+    await client.async_get_car_data()
+
+    flags_call = session.request.call_args_list[1]
+    assert flags_call.kwargs["params"] == {"brand": "voyah"}
+
+
+async def test_get_car_data_rejects_non_object_telemetry() -> None:
+    """A telemetry response that is not a JSON object is an API error."""
+    routes = _new_telemetry_routes()
+    routes[f"/client-bff-service/telemetry/{MOCK_IMEI}"] = _mock_response(200, ["unexpected"])
+    client = _make_client(_routed_session(routes))
+
+    with pytest.raises(VoyahApiError):
+        await client.async_get_car_data()
 
 
 async def test_get_car_data_propagates_auth_error_from_detection() -> None:
@@ -369,6 +523,94 @@ async def test_request_refreshes_token_on_401() -> None:
     assert result["imei"] == MOCK_IMEI
     assert client.access_token == "new-access"
     assert client.refresh_token == "new-refresh"
+
+
+async def test_concurrent_401_refreshes_token_once() -> None:
+    """Requests that get 401 at the same time share one token refresh."""
+    release = asyncio.Event()
+    refresh_resp = _mock_response(200, {"accessToken": "new-access", "refreshToken": "new-refresh"})
+
+    async def _wait_for_release(*_args: Any) -> MagicMock:
+        await release.wait()
+        return refresh_resp
+
+    refresh_resp.__aenter__ = AsyncMock(side_effect=_wait_for_release)
+    session = MagicMock()
+    session.request = MagicMock(
+        side_effect=[
+            _mock_response(401),
+            _mock_response(401),
+            _mock_response(200, MOCK_CAR_INFO_DATA),
+            _mock_response(200, MOCK_CAR_INFO_DATA),
+        ]
+    )
+    session.post = MagicMock(return_value=refresh_resp)
+    client = _make_client(session)
+
+    first = asyncio.create_task(client.async_get_car_info())
+    second = asyncio.create_task(client.async_get_car_info())
+    for _ in range(100):
+        if session.request.call_count == 2:
+            break
+        await asyncio.sleep(0)
+    release.set()
+    results = await asyncio.gather(first, second)
+
+    assert [result["imei"] for result in results] == [MOCK_IMEI, MOCK_IMEI]
+    session.post.assert_called_once()
+    assert client.refresh_token == "new-refresh"
+
+
+async def test_request_accepts_empty_created_response() -> None:
+    """An empty 201 (as the backend sends for some POSTs) is a success with an empty result."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(201, text=""))
+
+    client = _make_client(session)
+    assert await client.async_send_tbox_command("heating") == {}
+
+
+async def test_request_raises_api_error_on_invalid_json() -> None:
+    """A body that is not JSON is reported as an API error."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(200, text="<html>"))
+
+    client = _make_client(session)
+    with pytest.raises(VoyahApiError):
+        await client.async_get_car_info()
+
+
+async def test_get_car_info_rejects_non_object_response() -> None:
+    """A car card that is not a JSON object is an API error."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(200, [MOCK_CAR_INFO_DATA]))
+
+    client = _make_client(session)
+    with pytest.raises(VoyahApiError):
+        await client.async_get_car_info()
+
+
+async def test_request_raises_auth_error_when_retry_gets_401() -> None:
+    """A 401 right after a successful token refresh is an auth error."""
+    session = MagicMock()
+    session.request = MagicMock(return_value=_mock_response(401))
+    session.post = MagicMock(
+        return_value=_mock_response(200, {"accessToken": "new-access", "refreshToken": "new-refresh"})
+    )
+
+    client = _make_client(session)
+    with pytest.raises(VoyahApiAuthError):
+        await client.async_get_car_info()
+
+
+async def test_request_wraps_network_errors() -> None:
+    """aiohttp errors become VoyahApiConnectionError."""
+    session = MagicMock()
+    session.request = MagicMock(side_effect=aiohttp.ClientConnectionError("reset"))
+
+    client = _make_client(session)
+    with pytest.raises(VoyahApiConnectionError):
+        await client.async_get_car_info()
 
 
 async def test_request_raises_on_unexpected_status() -> None:

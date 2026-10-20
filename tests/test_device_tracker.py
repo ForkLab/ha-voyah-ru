@@ -86,3 +86,12 @@ async def test_tracker_unique_id(hass: HomeAssistant) -> None:
     entry = make_config_entry(hass)
     tracker = VoyahDeviceTracker(coordinator, entry)
     assert tracker.unique_id == f"{MOCK_CONFIG_DATA['car_id']}_location"
+
+
+async def test_tracker_position_at_none_when_out_of_range(hass: HomeAssistant) -> None:
+    """A GPS fix time outside the datetime range does not break the tracker attributes."""
+    data = {**MOCK_CAR_DATA, "position_data": {**MOCK_CAR_DATA["position_data"], "position_at": 1e20}}
+    coordinator = make_coordinator(hass, data)
+    entry = make_config_entry(hass)
+    tracker = VoyahDeviceTracker(coordinator, entry)
+    assert tracker.extra_state_attributes["position_at"] is None

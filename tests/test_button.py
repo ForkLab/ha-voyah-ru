@@ -27,17 +27,16 @@ def _make_coordinator_with_command_client(hass: HomeAssistant) -> tuple[VoyahDat
     return coordinator, entry
 
 
-async def test_button_press_sends_command_and_refreshes(hass: HomeAssistant) -> None:
-    """async_press sends configured command and triggers coordinator refresh."""
+async def test_button_press_sends_command(hass: HomeAssistant) -> None:
+    """async_press sends the configured command through the coordinator."""
     coordinator, entry = _make_coordinator_with_command_client(hass)
     description = next(d for d in BUTTON_DESCRIPTIONS if d.key == "start_cooling")
     button = VoyahButton(coordinator, description, entry)
 
-    with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock) as mock_refresh:
+    with patch.object(coordinator, "async_send_command", new_callable=AsyncMock) as mock_send:
         await button.async_press()
 
-    coordinator.client.async_send_command.assert_called_once_with("cooling", "coolingOn")
-    mock_refresh.assert_called_once()
+    mock_send.assert_called_once_with("cooling", "coolingOn")
 
 
 @pytest.mark.parametrize(
@@ -61,10 +60,10 @@ async def test_button_press_picks_command_from_state(
     description = next(d for d in BUTTON_DESCRIPTIONS if d.key == key)
     button = VoyahButton(coordinator, description, entry)
 
-    with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock):
+    with patch.object(coordinator, "async_send_command", new_callable=AsyncMock) as mock_send:
         await button.async_press()
 
-    coordinator.client.async_send_command.assert_called_once_with(*expected)
+    mock_send.assert_called_once_with(*expected)
 
 
 async def test_button_unique_id(hass: HomeAssistant) -> None:

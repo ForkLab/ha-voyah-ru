@@ -83,5 +83,15 @@ class VoyahDeviceTracker(CoordinatorEntity[VoyahDataUpdateCoordinator], TrackerE
             "altitude": pos.get("height"),
             "satellites": pos.get("sats"),
             "hdop": pos.get("hdop"),
-            "position_at": datetime.fromtimestamp(position_at, tz=UTC) if position_at is not None else None,
+            "position_at": _utc_from_timestamp(position_at),
         }
+
+
+def _utc_from_timestamp(timestamp: float | None) -> datetime | None:
+    """Convert a unix timestamp to a UTC datetime; None if it is missing or out of range."""
+    if timestamp is None:
+        return None
+    try:
+        return datetime.fromtimestamp(timestamp, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None

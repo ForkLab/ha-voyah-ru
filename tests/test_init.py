@@ -1,5 +1,7 @@
 """End-to-end setup tests: HTTP responses → coordinator → entity states."""
 
+from unittest.mock import patch
+
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
@@ -11,6 +13,13 @@ from custom_components.voyah.config_flow import VoyahConfigFlow
 from custom_components.voyah.const import API_BASE_URL, DOMAIN
 
 from .conftest import MOCK_CAR_ID, MOCK_CAR_INFO_DATA, MOCK_CONFIG_DATA, MOCK_IMEI, MOCK_TELEMETRY_RESPONSE
+
+LEGACY_SENSORS_RESPONSE = {
+    "sensorsData": {"batteryPercentage": 80, "centralLockingStatus": 1},
+    "positionData": {"lat": 55.0, "lon": 37.0, "speed": 0},
+    "time": 1700000000,
+    "lastPing": 6.5,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -76,15 +85,7 @@ async def test_setup_with_legacy_tbox_api(hass: HomeAssistant, aioclient_mock: A
     """Cars without the rollout flag keep using the legacy TBox sensors endpoint."""
     aioclient_mock.get(f"{API_BASE_URL}/car-service/car/v2/{MOCK_CAR_ID}", json=MOCK_CAR_INFO_DATA)
     aioclient_mock.get(f"{API_BASE_URL}/config-service/config/flags", json={"flags": {"newTelemetryEnabled": False}})
-    aioclient_mock.get(
-        f"{API_BASE_URL}/car-service/tbox/{MOCK_CAR_ID}/sensors",
-        json={
-            "sensorsData": {"batteryPercentage": 80, "centralLockingStatus": 1},
-            "positionData": {"lat": 55.0, "lon": 37.0, "speed": 0},
-            "time": 1700000000,
-            "lastPing": 6.5,
-        },
-    )
+    aioclient_mock.get(f"{API_BASE_URL}/car-service/tbox/{MOCK_CAR_ID}/sensors", json=LEGACY_SENSORS_RESPONSE)
 
     await _setup_entry(hass)
 
@@ -101,3 +102,28 @@ async def test_setup_with_legacy_tbox_api(hass: HomeAssistant, aioclient_mock: A
         ("button", "find_car"),
     ]:
         assert registry.async_get_entity_id(platform, DOMAIN, f"{MOCK_CAR_ID}_{suffix}") is None
+
+
+async def test_entry_reloads_when_car_moves_to_new_api(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """When the rollout flag turns on at a periodic re-check, entities of the new API appear."""
+    aioclient_mock.get(f"{API_BASE_URL}/car-service/car/v2/{MOCK_CAR_ID}", json=MOCK_CAR_INFO_DATA)
+    aioclient_mock.get(f"{API_BASE_URL}/config-service/config/flags", json={"flags": {"newTelemetryEnabled": False}})
+    aioclient_mock.get(f"{API_BASE_URL}/car-service/tbox/{MOCK_CAR_ID}/sensors", json=LEGACY_SENSORS_RESPONSE)
+    with patch("custom_components.voyah.api.time.monotonic", return_value=1000.0):
+        entry = await _setup_entry(hass)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("switch", DOMAIN, f"{MOCK_CAR_ID}_heating") is None
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{API_BASE_URL}/car-service/car/v2/{MOCK_CAR_ID}", json=MOCK_CAR_INFO_DATA)
+    aioclient_mock.get(f"{API_BASE_URL}/config-service/config/flags", json={"flags": {"newTelemetryEnabled": True}})
+    aioclient_mock.get(f"{API_BASE_URL}/client-bff-service/telemetry/{MOCK_IMEI}", json=MOCK_TELEMETRY_RESPONSE)
+    with patch("custom_components.voyah.api.time.monotonic", return_value=1000.0 + 13 * 3600):
+        await hass.data[DOMAIN][entry.entry_id]["coordinator"].async_refresh()
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert _state(hass, "switch", "heating").state == "on"
+    assert _state(hass, "sensor", "car_status").state == "charging"

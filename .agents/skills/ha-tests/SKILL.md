@@ -75,10 +75,19 @@ API-временные метки (`time` в данных) — обычные un
 `test_api.py`: мокается `aiohttp`-сессия. Проверяй:
 - успешный запрос и парсинг: `_parse` (прежний API: `sensorsData`/`positionData`/`time`/`lastPing`)
   и `_parse_telemetry` (новый API: приведение строк, алиасы ключей, `command_states`);
-- выбор API по флагу `newTelemetryEnabled` — хелпер `_routed_session` отвечает по префиксу пути;
+- выбор API по флагу `newTelemetryEnabled` — хелпер `_routed_session` отвечает по префиксу пути,
+  а `_at(seconds)` фиксирует `time.monotonic` для сценариев перепроверки флага;
 - 401 → рефреш токена → повтор запроса; повторный 401 → `VoyahApiAuthError`;
 - сетевые ошибки → `VoyahApiConnectionError`;
 - неуспешный рефреш (не-200, отсутствие токенов в ответе) → `False`.
+
+## Паттерн: команды
+
+Кнопки и свитчи вызывают `coordinator.async_send_command(...)` — в их тестах патчь этот метод
+(`patch.object(coordinator, "async_send_command", new_callable=AsyncMock)`) и проверяй аргументы.
+Сам `async_send_command` тестируется в `test_coordinator.py`: он ставит таймеры
+`async_call_later`, а фикстура `hass` падает на незавершённых таймерах, поэтому в тесте
+прокрути время через `async_fire_time_changed` и дождись `hass.async_block_till_done()`.
 
 ## Паттерн: config flow
 
@@ -93,8 +102,7 @@ config flow должен быть покрыт полностью.
 нужна фикстура `enable_custom_integrations`:
 
 ```python
-async def test_full_setup(hass, enable_custom_integrations):
-    ...
+async def test_full_setup(hass, enable_custom_integrations): ...
 ```
 
 Образец — `test_init.py`: HTTP-ответы мокаются фикстурой `aioclient_mock`,
