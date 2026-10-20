@@ -193,7 +193,12 @@ async def test_parse_telemetry_position_time_and_last_ping() -> None:
     with time_machine.travel(now, tick=False):
         result = VoyahApiClient._parse_telemetry(MOCK_TELEMETRY_RESPONSE)
 
-    assert result["position_data"] == {"lat": 55.75, "lon": 37.61, "course": 258}
+    assert result["position_data"] == {
+        "lat": 55.75,
+        "lon": 37.61,
+        "course": 258,
+        "position_at": pytest.approx(1792471790.709),
+    }
     assert "lat" not in result["sensors_data"]
     assert result["time"] == pytest.approx(1792471790.719)
     assert result["last_ping"] == pytest.approx(30)
@@ -207,7 +212,24 @@ async def test_parse_telemetry_collects_command_states() -> None:
         "coolingOn": False,
         "trunkOpen": False,
         "centralLockingOff": False,
+        "search": False,
     }
+
+
+async def test_parse_telemetry_collects_checks() -> None:
+    """Firmware and settings checks are passed through for diagnostic sensors."""
+    checks = VoyahApiClient._parse_telemetry(MOCK_TELEMETRY_RESPONSE)["checks"]
+    assert checks == {
+        "firmwareCheck": {"expected": "fw-1.0", "actual": "fw-1.1", "mismatch": True},
+        "settingsCheck": {"expected": "cfg-1", "actual": "cfg-1", "mismatch": False},
+    }
+
+
+async def test_parse_telemetry_online_from_top_level() -> None:
+    """Online state comes from the top-level isOnline, as in the web app."""
+    raw = {**MOCK_TELEMETRY_RESPONSE, "isOnline": False}
+    sensors = VoyahApiClient._parse_telemetry(raw)["sensors_data"]
+    assert sensors["isOnline"] is False
 
 
 async def test_parse_telemetry_handles_empty_response() -> None:
@@ -219,6 +241,7 @@ async def test_parse_telemetry_handles_empty_response() -> None:
         "time": None,
         "last_ping": None,
         "command_states": {},
+        "checks": {},
     }
 
 
@@ -394,6 +417,15 @@ async def test_send_command_uses_legacy_tbox_endpoint() -> None:
 
     command_call = session.request.call_args_list[-1]
     assert command_call.args == ("POST", f"{API_BASE_URL}/car-service/tbox/{MOCK_CAR_ID}/trunkToggle")
+
+
+async def test_send_command_without_tbox_command_on_legacy_api() -> None:
+    """Commands that exist only in the new API fail clearly on the legacy API."""
+    session = _routed_session(_legacy_routes())
+    client = _make_client(session)
+
+    with pytest.raises(VoyahApiError):
+        await client.async_send_command(None, "search")
 
 
 async def test_send_tbox_command_posts_to_command_endpoint() -> None:

@@ -8,23 +8,23 @@ from datetime import datetime
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_CAR_ID, CONF_CAR_NAME, DOMAIN
+from .api import VoyahApiError
+from .const import COMMAND_REFRESH_DELAY_SECONDS, CONF_CAR_ID, CONF_CAR_NAME, DOMAIN
 from .coordinator import VoyahDataUpdateCoordinator
-
-COMMAND_REFRESH_DELAY_SECONDS = (2, 5, 15)
 
 
 @dataclass(frozen=True, kw_only=True)
 class VoyahButtonEntityDescription(ButtonEntityDescription):
     """Description of a Voyah button command."""
 
-    # Legacy TBox endpoint: POST /car-service/tbox/{car_id}/{command}
-    command: str
+    # Legacy TBox endpoint: POST /car-service/tbox/{car_id}/{command}; None if the legacy API lacks it
+    command: str | None
     # New telemetry API command; for toggles this is the button's activateCommand
     telemetry_command: str
     # Toggles only: deactivateCommand, sent while the API reports the button as active
@@ -62,6 +62,13 @@ BUTTON_DESCRIPTIONS: tuple[VoyahButtonEntityDescription, ...] = (
         telemetry_command="trunkOpen",
         telemetry_toggle_command="trunkClose",
     ),
+    VoyahButtonEntityDescription(
+        key="find_car",
+        translation_key="find_car",
+        icon="mdi:car-search",
+        command=None,
+        telemetry_command="search",
+    ),
 )
 
 
@@ -72,7 +79,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up Voyah button entities."""
     coordinator: VoyahDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    async_add_entities([VoyahButton(coordinator, description, entry) for description in BUTTON_DESCRIPTIONS])
+    command_states = coordinator.data.get("command_states", {})
+    async_add_entities(
+        VoyahButton(coordinator, description, entry)
+        for description in BUTTON_DESCRIPTIONS
+        # Commands missing from the legacy API exist only if the new API lists them.
+        if description.command is not None or description.telemetry_command in command_states
+    )
 
 
 class VoyahButton(CoordinatorEntity[VoyahDataUpdateCoordinator], ButtonEntity):
@@ -100,7 +113,10 @@ class VoyahButton(CoordinatorEntity[VoyahDataUpdateCoordinator], ButtonEntity):
 
     async def async_press(self) -> None:
         """Send the configured remote command."""
-        await self.coordinator.client.async_send_command(self.entity_description.command, self._telemetry_command())
+        try:
+            await self.coordinator.client.async_send_command(self.entity_description.command, self._telemetry_command())
+        except VoyahApiError as err:
+            raise HomeAssistantError(f"Voyah command failed: {err}") from err
         if self.hass is None:
             await self.coordinator.async_request_refresh()
             return

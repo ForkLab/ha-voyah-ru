@@ -56,6 +56,20 @@ async def test_setup_with_new_telemetry_api(hass: HomeAssistant, aioclient_mock:
     tracker = _state(hass, "device_tracker", "location")
     assert tracker.attributes["latitude"] == 55.75
     assert tracker.attributes["longitude"] == 37.61
+    assert tracker.attributes["position_at"] is not None
+
+    # Entities that exist only for the new telemetry API.
+    assert _state(hass, "sensor", "car_status").state == "charging"
+    assert _state(hass, "sensor", "signalLevel").state == "20"
+    assert _state(hass, "binary_sensor", "doorRRStatus").state == "on"
+    assert _state(hass, "binary_sensor", "isChargingGunInserted").state == "on"
+    assert _state(hass, "binary_sensor", "isParkedOn").state == "on"
+    assert _state(hass, "binary_sensor", "isOnline").state == "on"
+    assert _state(hass, "binary_sensor", "firmwareCheck").state == "on"
+    assert _state(hass, "binary_sensor", "settingsCheck").state == "off"
+    assert _state(hass, "switch", "heating").state == "on"
+    assert _state(hass, "switch", "cooling").state == "off"
+    assert _state(hass, "button", "find_car") is not None
 
 
 async def test_setup_with_legacy_tbox_api(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
@@ -78,3 +92,12 @@ async def test_setup_with_legacy_tbox_api(hass: HomeAssistant, aioclient_mock: A
     assert _state(hass, "sensor", "speed").state == "0"
     assert _state(hass, "binary_sensor", "centralLockingStatus").state == "on"
     assert _state(hass, "sensor", "last_ping").state == "6.5"
+
+    registry = er.async_get(hass)
+    for platform, suffix in [
+        ("sensor", "car_status"),
+        ("binary_sensor", "firmwareCheck"),
+        ("switch", "heating"),
+        ("button", "find_car"),
+    ]:
+        assert registry.async_get_entity_id(platform, DOMAIN, f"{MOCK_CAR_ID}_{suffix}") is None

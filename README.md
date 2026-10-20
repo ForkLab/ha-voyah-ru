@@ -29,6 +29,8 @@
 | Здоровье батареи (SOH) | % | Состояние здоровья высоковольтной батареи (>100% — новая батарея) |
 | Температура в салоне | °C | Температура воздуха внутри салона автомобиля |
 | Время с последнего пинга | с | Время с момента последнего соединения автомобиля с сервером |
+| Статус автомобиля | — | Не в сети / Идёт зарядка / В пути / Зажигание включено / Доступен — как в веб-приложении (только новый API, см. ниже) |
+| Уровень сигнала | — | Уровень сотового сигнала телематического блока (CSQ, 0–31), диагностический (только новый API) |
 
 #### Здоровье батареи (SOH) — примечания
 
@@ -61,6 +63,16 @@
 | Запуск охлаждения | Отправляет удалённую команду на запуск охлаждения салона |
 | Переключить центральный замок | Отправляет toggle-команду центрального замка; итоговое состояние отображает бинарный сенсор |
 | Переключить багажник | Отправляет toggle-команду багажника; итоговое состояние отображает бинарный сенсор |
+| Найти автомобиль | Отправляет команду поиска `search` (только новый API) |
+
+### Переключатели
+
+Создаются только для машин на новом API. Состояние — статус соответствующей кнопки в ответе API, тот же, что показывает веб-приложение.
+
+| Переключатель | Описание |
+|---|---|
+| Прогрев | Включает (`heatingOn`) и выключает (`heatingOff`) удалённый прогрев |
+| Охлаждение | Включает (`coolingOn`) и выключает (`coolingOff`) удалённое охлаждение |
 
 ### Трекер устройства
 
@@ -74,6 +86,7 @@
 | Спутники | Количество используемых GPS-спутников |
 | HDOP | Горизонтальный фактор снижения точности |
 | Точность местоположения | Расчётная точность в метрах (на основе HDOP) |
+| Время GPS-фикса | Когда были получены координаты (`positionAt`, только новый API) |
 
 ### Бинарные сенсоры
 
@@ -82,7 +95,7 @@
 | Зажигание | Состояние двигателя/зажигания |
 | Зарядка | Идёт зарядка |
 | Центральный замок | Центральный замок активен |
-| Двери (ПЛ, ПП, ЗЛ) | Состояние каждой двери |
+| Двери (ПЛ, ПП, ЗЛ, ЗП) | Состояние каждой двери (задняя правая — только новый API) |
 | Багажник | Багажник открыт/закрыт |
 | Хэтчбек | Дверь хэтчбека открыта/закрыта |
 | Климат | Климат-контроль активен |
@@ -94,6 +107,11 @@
 | Обогрев зеркал | Обогрев зеркал активен |
 | Обогрев руля | Обогрев рулевого колеса активен |
 | Обогрев сидений (водитель, пассажир, задние Л/П) | Обогрев каждого сиденья |
+| Зарядный кабель | Зарядный пистолет вставлен (только новый API) |
+| Режим парковки | Включена передача P (только новый API) |
+| В сети | Телематический блок на связи с сервером, диагностический (только новый API) |
+| Версия прошивки устарела | Прошивка блока отличается от профиля автомобиля; в атрибутах `actual` и `expected` (только новый API) |
+| Версия настроек устарела | Настройки блока отличаются от профиля автомобиля; в атрибутах `actual` и `expected` (только новый API) |
 
 ### Новый API телеметрии
 
@@ -109,6 +127,17 @@ Voyah Assist постепенно переводит автомобили на �
 - «Зарядка» вычисляется так же, как статус «Идёт зарядка» в приложении: зарядный пистолет вставлен и напряжение 12V ≥ 13 В.
 - «Время с последнего пинга» — время с последнего обновления состояния автомобиля (`carStateUpdatedAt`).
 - Кнопки замка и багажника отправляют команду открытия или закрытия в зависимости от текущего состояния, которое сообщает API.
+- Появляются сущности, которых нет у прежнего API: «Статус автомобиля», «Уровень сигнала», «Зарядный кабель», «Режим парковки», «В сети», «Дверь сзади справа», проверки версий прошивки и настроек, кнопка «Найти автомобиль» и переключатели «Прогрев» и «Охлаждение».
+
+#### Статус автомобиля — алгоритм
+
+Повторяет статус в карточке автомобиля веб-приложения. Проверки идут по порядку, побеждает первая подходящая:
+
+1. **Не в сети** — API сообщает `isOnline = false`.
+2. **Идёт зарядка** — зарядный пистолет вставлен (`isChargingGunInserted`) или `chargingStatus = 1`, и напряжение 12V ≥ 13 В.
+3. **В пути** — `ready = 1` или машина не на парковке (`isParkedOn = false`).
+4. **Зажигание включено** — `isIgnitionOn` или `ignitionStatus = 1`.
+5. **Доступен** — во всех остальных случаях.
 
 ### Графики истории
 
@@ -288,6 +317,8 @@ Custom integration for [Home Assistant](https://www.home-assistant.io/) that con
 | Battery SOH | % | State of health of the high-voltage battery (>100% means new battery) |
 | Interior temperature | °C | Air temperature inside the vehicle cabin |
 | Time since last ping | s | Seconds since the car last connected to the server |
+| Car status | — | Offline / Charging / Driving / Ignition on / Available — as in the web app (new API only, see below) |
+| Signal level | — | Cellular signal level of the telematics unit (CSQ, 0–31), diagnostic (new API only) |
 
 #### Battery SOH — notes
 
@@ -320,6 +351,16 @@ The sensor estimates when the battery will reach 100% using a sliding window of 
 | Start cooling | Sends a remote command to start cabin cooling |
 | Toggle central lock | Sends the central lock toggle command; the resulting state is shown by the binary sensor |
 | Toggle trunk | Sends the trunk toggle command; the resulting state is shown by the binary sensor |
+| Find car | Sends the `search` command (new API only) |
+
+### Switches
+
+Created only for cars on the new API. The state is the status of the matching button in the API response, the same one the web app shows.
+
+| Switch | Description |
+|---|---|
+| Heating | Turns remote heating on (`heatingOn`) and off (`heatingOff`) |
+| Cooling | Turns remote cooling on (`coolingOn`) and off (`coolingOff`) |
 
 ### Device Tracker
 
@@ -333,6 +374,7 @@ The integration creates a `device_tracker` entity that shows your car's position
 | Satellites | Number of GPS satellites in use |
 | HDOP | Horizontal dilution of precision |
 | Location accuracy | Estimated accuracy in meters (derived from HDOP) |
+| Position at | When the coordinates were received (`positionAt`, new API only) |
 
 ### Binary Sensors
 
@@ -341,7 +383,7 @@ The integration creates a `device_tracker` entity that shows your car's position
 | Ignition | Engine/ignition state |
 | Charging | Charging in progress |
 | Central lock | Central locking engaged |
-| Doors (FL, FR, RL) | Individual door open/closed |
+| Doors (FL, FR, RL, RR) | Individual door open/closed (rear right — new API only) |
 | Trunk | Trunk open/closed |
 | Hatch | Hatch open/closed |
 | Climate | Climate control active |
@@ -353,6 +395,11 @@ The integration creates a `device_tracker` entity that shows your car's position
 | Mirrors heating | Mirror heating active |
 | Wheel heating | Steering wheel heating active |
 | Seat heating (driver, passenger, rear L/R) | Individual seat heating |
+| Charging cable | Charging gun is inserted (new API only) |
+| Parked | Gear P is engaged (new API only) |
+| Online | Telematics unit is connected to the server, diagnostic (new API only) |
+| Firmware outdated | Unit firmware differs from the car profile; `actual` and `expected` attributes (new API only) |
+| Settings outdated | Unit settings differ from the car profile; `actual` and `expected` attributes (new API only) |
 
 ### New telemetry API
 
@@ -368,6 +415,17 @@ Differences for cars on the new API:
 - "Charging" is derived the same way as the app's "Charging" status: the charging gun is inserted and the 12V voltage is ≥ 13 V.
 - "Last ping" is the time since the car last reported its state (`carStateUpdatedAt`).
 - The lock and trunk buttons send an open or close command depending on the current state reported by the API.
+- Entities the legacy API does not have are added: "Car status", "Signal level", "Charging cable", "Parked", "Online", "Door rear right", firmware and settings checks, the "Find car" button and the "Heating" and "Cooling" switches.
+
+#### Car status — algorithm
+
+Mirrors the status shown on the car card in the web app. Checks run in order; the first match wins:
+
+1. **Offline** — the API reports `isOnline = false`.
+2. **Charging** — the charging gun is inserted (`isChargingGunInserted`) or `chargingStatus = 1`, and the 12V voltage is ≥ 13 V.
+3. **Driving** — `ready = 1` or the car is not parked (`isParkedOn = false`).
+4. **Ignition on** — `isIgnitionOn` or `ignitionStatus = 1`.
+5. **Available** — otherwise.
 
 ### History Charts
 

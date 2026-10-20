@@ -11,7 +11,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import API_BASE_URL
+from .const import API_BASE_URL, CHARGING_MIN_12V_VOLTAGE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,9 +23,6 @@ DEFAULT_BRAND = "voyah"
 # While a car stays on the legacy TBox API, re-check the rollout flag this often.
 TELEMETRY_RECHECK_SECONDS = 12 * 60 * 60
 
-# The web app reports "charging" when the gun is inserted and the 12V bus is powered.
-CHARGING_MIN_12V_VOLTAGE = 13
-
 # New telemetry key → key used by the legacy API (and by existing entity unique IDs).
 TELEMETRY_KEY_ALIASES: dict[str, str] = {
     "remainsBatteryMileage": "remainsMileage",
@@ -34,6 +31,7 @@ TELEMETRY_KEY_ALIASES: dict[str, str] = {
 }
 
 TELEMETRY_POSITION_KEYS = ("lat", "lon", "course")
+TELEMETRY_CHECK_KEYS = ("firmwareCheck", "settingsCheck")
 
 
 class VoyahApiError(Exception):
@@ -170,14 +168,17 @@ class VoyahApiClient:
             _LOGGER.debug("Access token refreshed successfully")
             return True
 
-    async def async_send_command(self, tbox_command: str, telemetry_command: str) -> dict[str, Any]:
+    async def async_send_command(self, tbox_command: str | None, telemetry_command: str) -> dict[str, Any]:
         """Send a remote command through the API the car is served by.
 
-        ``tbox_command`` is the legacy TBox endpoint name, ``telemetry_command``
-        the command name of the new telemetry API.
+        ``tbox_command`` is the legacy TBox endpoint name (None if the legacy API
+        has no such command), ``telemetry_command`` the command name of the new
+        telemetry API.
         """
         imei = await self._async_get_telemetry_imei()
         if imei is None:
+            if tbox_command is None:
+                raise VoyahApiError(f"Command {telemetry_command} is only available via the new telemetry API")
             return await self.async_send_tbox_command(tbox_command)
         return await self._request(
             "POST",
@@ -287,6 +288,13 @@ class VoyahApiClient:
         """Normalize the client-bff telemetry response into the legacy data shape."""
         sensors_data = {key: _coerce_value(value) for key, value in (raw.get("sensors") or {}).items()}
         position_data = {key: sensors_data.pop(key) for key in TELEMETRY_POSITION_KEYS if key in sensors_data}
+        position_at = raw.get("positionAt")
+        if isinstance(position_at, (int, float)):
+            position_data["position_at"] = position_at / 1000
+
+        # The web app takes the online state from the top level, not from sensors.
+        if isinstance(raw.get("isOnline"), bool):
+            sensors_data["isOnline"] = raw["isOnline"]
 
         for new_key, legacy_key in TELEMETRY_KEY_ALIASES.items():
             if new_key in sensors_data:
@@ -314,6 +322,7 @@ class VoyahApiClient:
             for button in raw.get("buttons") or []
             if button.get("activateCommand")
         }
+        checks = {key: raw[key] for key in TELEMETRY_CHECK_KEYS if isinstance(raw.get(key), dict)}
 
         _LOGGER.debug(
             "Parsed telemetry: %d sensor keys, time=%s",
@@ -326,6 +335,7 @@ class VoyahApiClient:
             "time": timestamp,
             "last_ping": last_ping,
             "command_states": command_states,
+            "checks": checks,
         }
 
     # ── Auth helpers (used by config_flow, not during polling) ──

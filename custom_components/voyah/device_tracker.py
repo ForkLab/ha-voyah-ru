@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.config_entry import TrackerEntity
 from homeassistant.config_entries import ConfigEntry
@@ -73,11 +75,13 @@ class VoyahDeviceTracker(CoordinatorEntity[VoyahDataUpdateCoordinator], TrackerE
         return 0
 
     @property
-    def extra_state_attributes(self) -> dict[str, float | int | None]:
+    def extra_state_attributes(self) -> dict[str, float | int | datetime | None]:
         pos = self._position
+        position_at = pos.get("position_at")
         return {
             "course": pos.get("course"),
             "altitude": pos.get("height"),
             "satellites": pos.get("sats"),
             "hdop": pos.get("hdop"),
+            "position_at": datetime.fromtimestamp(position_at, tz=UTC) if position_at is not None else None,
         }

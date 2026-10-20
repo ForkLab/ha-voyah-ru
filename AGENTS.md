@@ -31,7 +31,8 @@ custom_components/voyah/
 ├── sensor.py          # обычные сенсоры + вычисляемые (время окончания зарядки, SOH, last ping)
 ├── binary_sensor.py   # бинарные сенсоры по BINARY_SENSOR_DESCRIPTIONS
 ├── device_tracker.py  # GPS-трекер (TrackerEntity, точность из HDOP)
-├── button.py          # команды (запуск обогрева)
+├── button.py          # команды (обогрев, охлаждение, замок, багажник, поиск)
+├── switch.py          # прогрев/охлаждение вкл/выкл (только новый API, состояние из command_states)
 ├── strings.json       # источник истины для всех строк UI
 └── translations/      # en.json (копия strings.json), ru.json (перевод)
 tests/                 # юнит-тесты, общие фикстуры в conftest.py
@@ -46,7 +47,9 @@ tests/                 # юнит-тесты, общие фикстуры в con
    прежние имена вроде `remainsMileage`/`chargingStatus`, чтобы не менять unique_id). Если выключен —
    `/car-service/tbox/{car_id}/sensors` (метод `_parse`), а флаг перепроверяется раз в 12 ч.
    Оба парсера возвращают `{"sensors_data": ..., "position_data": ..., "time": ..., "last_ping": ...}`,
-   новый — ещё `command_states` (состояния кнопок для toggle-команд).
+   новый — ещё `command_states` (состояния кнопок для toggle-команд и свитчей) и `checks`
+   (`firmwareCheck`/`settingsCheck`). Сущности, которых нет у старого API (статус авто,
+   свитчи, «Найти автомобиль», проверки версий), создаются только при наличии этих данных.
    Команды кнопок: `async_send_command(tbox_command, telemetry_command)` → `POST /client-bff-service/telemetry-commands`
    `{commandName, imei}` или прежний `POST /car-service/tbox/{car_id}/{command}`.
 2. `VoyahDataUpdateCoordinator` хранит этот словарь; все сущности читают из `coordinator.data`.
@@ -61,7 +64,9 @@ tests/                 # юнит-тесты, общие фикстуры в con
   Ключ описания = ключ в `sensors_data` ответа API (camelCase, как в API).
 - **Условное создание**: сенсоры, бинарные сенсоры и трекер добавляются только
   если их ключи присутствуют в первом снимке данных координатора
-  (см. `async_setup_entry` платформ). Кнопки-команды создаются безусловно.
+  (см. `async_setup_entry` платформ). Кнопки с командой старого API (`command`) создаются
+  безусловно; кнопки и свитчи, которые есть только в новом API, — если их команда
+  есть в `command_states`.
 - У каждой сущности: `_attr_has_entity_name = True`, `_attr_translation_key`,
   `_attr_unique_id = f"{car_id}_{key}"`, общий `DeviceInfo(identifiers={(DOMAIN, car_id)})` —
   все сущности принадлежат одному устройству-машине.

@@ -3,9 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.voyah.api import VoyahApiError
 from custom_components.voyah.button import BUTTON_DESCRIPTIONS, VoyahButton, VoyahStartHeatingButton
 from custom_components.voyah.const import DOMAIN
 from custom_components.voyah.coordinator import VoyahDataUpdateCoordinator
@@ -47,6 +49,7 @@ async def test_button_press_sends_command_and_refreshes(hass: HomeAssistant) -> 
         ("toggle_trunk", {"trunkOpen": True}, ("trunkToggle", "trunkClose")),
         ("toggle_trunk", {}, ("trunkToggle", "trunkOpen")),
         ("start_heating", {"heatingOn": True}, ("heating", "heatingOn")),
+        ("find_car", {"search": False}, (None, "search")),
     ],
 )
 async def test_button_press_picks_command_from_state(
@@ -77,3 +80,14 @@ async def test_start_heating_button_keeps_existing_unique_id(hass: HomeAssistant
     coordinator, entry = _make_coordinator_with_command_client(hass)
     button = VoyahStartHeatingButton(coordinator, entry)
     assert button.unique_id == f"{MOCK_CONFIG_DATA['car_id']}_start_heating"
+
+
+async def test_button_press_raises_ha_error_on_api_error(hass: HomeAssistant) -> None:
+    """API failures are reported to the user as HomeAssistantError."""
+    coordinator, entry = _make_coordinator_with_command_client(hass)
+    coordinator.client.async_send_command = AsyncMock(side_effect=VoyahApiError("boom"))
+    description = next(d for d in BUTTON_DESCRIPTIONS if d.key == "find_car")
+    button = VoyahButton(coordinator, description, entry)
+
+    with pytest.raises(HomeAssistantError):
+        await button.async_press()
